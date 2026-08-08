@@ -75,6 +75,20 @@ class SjtuCalibrationTest(unittest.TestCase):
             with self.assertRaisesRegex(ValueError, "Non-finite"):
                 MODULE.parse_calibration(path)
 
+    def test_rejects_nonpositive_calibration_dimensions(self):
+        content = "\n".join([
+            "camera 3",
+            "size 0 1080",
+            "intrinsic 1000 1001 960 540",
+            "rotation 1 0 0 0 1 0 0 0 1",
+            "center 1 2 3",
+        ])
+        with tempfile.TemporaryDirectory() as directory:
+            path = Path(directory) / "paras.txt"
+            path.write_text(content)
+            with self.assertRaisesRegex(ValueError, "Nonpositive image size"):
+                MODULE.parse_calibration(path)
+
     def test_metric_extrinsic_uses_negative_rotated_camera_center(self):
         camera = {
             "width": 10,

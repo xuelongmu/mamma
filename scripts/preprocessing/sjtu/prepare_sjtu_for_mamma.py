@@ -96,6 +96,11 @@ def parse_calibration(path: Path) -> dict[int, dict]:
     for offset in range(0, len(lines), 5):
         camera_id = int(lines[offset].split()[1])
         width, height = map(int, lines[offset + 1].split()[1:])
+        if width <= 0 or height <= 0:
+            raise ValueError(
+                f"Nonpositive image size for camera {camera_id}: "
+                f"{width}x{height}"
+            )
         fx, fy, cx, cy = map(float, lines[offset + 2].split()[1:])
         r_values = list(map(float, lines[offset + 3].split()[1:]))
         center = list(map(float, lines[offset + 4].split()[1:]))
