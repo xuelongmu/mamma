@@ -174,3 +174,14 @@ camera 05 remained an isolated high-error view for the second body.
   quantify per-camera residuals with particular attention to body 1 and camera
   05 in the 6-view solve, then compare those diagnostics with the pending true
   12-view reconstruction.
+
+## 2026-08-08 - Basketball artifact-location correction
+
+- The conformed basketball capture uses session tag `basketball_full38s` and is
+  rooted at `data/sjtu_basketball/basketball_full38s/`; its descriptor is
+  `data/sjtu_basketball/basketball_full38s/capture.json` and its 12 synchronized
+  camera streams are under the sibling `videos/` directory.
+- The completed SAM2 stage uses output tag `sjtu_basketball_full38s_12v`; masks,
+  reports, and per-camera visualizations are rooted at
+  `output/ma_masks/sjtu_basketball_full38s_12v/basketball_full38s/basketball_full38s/`.
+  These generated local artifacts are not committed.
