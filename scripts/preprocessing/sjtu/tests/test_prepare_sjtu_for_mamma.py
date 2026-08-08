@@ -61,7 +61,7 @@ class SjtuCalibrationTest(unittest.TestCase):
             [0.0, 0.0, 1.0, -1.5],
         ])
 
-    def test_preflight_reuses_existing_complete_outputs(self):
+    def test_preflight_reports_all_camera_jobs(self):
         with tempfile.TemporaryDirectory() as directory:
             root = Path(directory)
             (root / "RGB").mkdir()
@@ -71,9 +71,8 @@ class SjtuCalibrationTest(unittest.TestCase):
                 (root / "RGB" / f"{camera_id}.mp4").touch()
             (videos / "cam_01.mp4").touch()
 
-            jobs = MODULE.preflight_video_jobs(root, videos, [0, 1], False)
-            self.assertFalse(jobs[0][-1])
-            self.assertTrue(jobs[1][-1])
+            jobs = MODULE.preflight_video_jobs(root, videos, [0, 1])
+            self.assertEqual([job[1] for job in jobs], ["cam_00", "cam_01"])
             self.assertFalse((videos / "cam_00.mp4").exists())
 
     def test_encode_video_atomically_commits_success(self):
@@ -124,7 +123,8 @@ class SjtuCalibrationTest(unittest.TestCase):
             )
             path.write_text(json.dumps(expected))
 
-            MODULE.validate_resume_manifest(path, expected, True, False)
+            completed = MODULE.validate_resume_manifest(path, expected, True, False)
+            self.assertEqual(completed, set())
             changed = {**expected, "start_seconds": 1.0}
             with self.assertRaises(RuntimeError):
                 MODULE.validate_resume_manifest(path, changed, True, False)
@@ -137,6 +137,29 @@ class SjtuCalibrationTest(unittest.TestCase):
             )
             with self.assertRaises(RuntimeError):
                 MODULE.validate_resume_manifest(path, expected, True, False)
+
+    def test_reuse_requires_completion_for_current_manifest(self):
+        with tempfile.TemporaryDirectory() as directory:
+            root = Path(directory)
+            old_complete = root / "cam_00.mp4"
+            stale_from_interrupted_overwrite = root / "cam_01.mp4"
+            old_complete.touch()
+            stale_from_interrupted_overwrite.touch()
+            completed = {"cam_00"}
+
+            self.assertTrue(
+                MODULE.should_reuse_output(
+                    old_complete, "cam_00", completed, overwrite=False
+                )
+            )
+            self.assertFalse(
+                MODULE.should_reuse_output(
+                    stale_from_interrupted_overwrite,
+                    "cam_01",
+                    completed,
+                    overwrite=False,
+                )
+            )
 
 
 if __name__ == "__main__":

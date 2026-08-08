@@ -9,7 +9,7 @@ cd "$REPO_ROOT"
 export MPLBACKEND=Agg
 
 for views in 4 6 8; do
-    python -m inference run \
+    micromamba run -n mamma python -m inference run \
         --cfg configs/ablations/presets/quick_2d.yaml \
         --capture "configs/ablations/captures/mamma_eval_catchball_${views}views.json" \
         --out-tag "ablate_${views}v" \

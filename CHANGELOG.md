@@ -48,3 +48,5 @@ machine-local progress belong in [`docs/status.md`](docs/status.md).
   the recorded manifest, and physical camera spacing must be finite and
   positive.
 - SJTU mask videos and collages now use the capture's documented 25 fps rate.
+- Conformance manifests track completion per camera so an interrupted
+  overwrite cannot reuse stale final-path videos.

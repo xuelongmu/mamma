@@ -149,3 +149,10 @@ camera 05 remained an isolated high-error view for the second body.
   to view count.
 - A controlled rerun must reuse the same compatible upstream evidence and vary
   only the cameras supplied to the 3D fit.
+
+## 2026-08-08 - Badminton baseline next action correction
+
+- The next action for the completed eight-view badminton baseline is to inspect
+  reprojections at the beginning, middle, and end, then reuse its compatible
+  masks and 2D landmarks for the pending 12-view fit and any controlled
+  camera-count comparison.

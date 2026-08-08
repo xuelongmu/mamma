@@ -8,7 +8,8 @@ sets are nested so results can be compared without changing the common views:
 - 6 views: add `IOI_03 IOI_11`
 - 8 views: add `IOI_07 IOI_15`
 
-Run all three from an activated `mamma` environment:
+Run all three from the repository checkout. The helper enters the `mamma`
+environment for each invocation:
 
 ```bash
 bash scripts/run_view_ablation.sh

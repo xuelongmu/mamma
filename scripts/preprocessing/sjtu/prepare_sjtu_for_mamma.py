@@ -116,8 +116,7 @@ def preflight_video_jobs(
     dataset_root: Path,
     videos_dir: Path,
     camera_ids: list[int],
-    overwrite: bool,
-) -> list[tuple[int, str, Path, Path, bool]]:
+) -> list[tuple[int, str, Path, Path]]:
     jobs = []
     missing_sources = []
     for camera_id in camera_ids:
@@ -126,8 +125,7 @@ def preflight_video_jobs(
         output = videos_dir / f"{camera_name}.mp4"
         if not source.is_file():
             missing_sources.append(source)
-        reuse_output = output.exists() and not overwrite
-        jobs.append((camera_id, camera_name, source, output, reuse_output))
+        jobs.append((camera_id, camera_name, source, output))
 
     if missing_sources:
         paths = "\n".join(f"- {path}" for path in missing_sources)
@@ -187,9 +185,9 @@ def validate_resume_manifest(
     expected: dict,
     has_reusable_outputs: bool,
     overwrite: bool,
-) -> None:
+) -> set[str]:
     if overwrite or not has_reusable_outputs:
-        return
+        return set()
     try:
         existing = json.loads(manifest_path.read_text())
     except (FileNotFoundError, json.JSONDecodeError) as exc:
@@ -206,6 +204,28 @@ def validate_resume_manifest(
             "Existing camera outputs were created with incompatible settings "
             f"({', '.join(mismatches)}); pass --overwrite or use a new session"
         )
+
+    completed = existing.get("completed_cameras")
+    if isinstance(completed, list):
+        return {str(camera) for camera in completed}
+
+    # Backward compatibility for manifests written before completion tracking.
+    if existing.get("state") in (None, "complete"):
+        return {
+            str(record["camera"])
+            for record in existing.get("records", [])
+            if isinstance(record, dict) and record.get("camera")
+        }
+    return set()
+
+
+def should_reuse_output(
+    output: Path,
+    camera_name: str,
+    completed_cameras: set[str],
+    overwrite: bool,
+) -> bool:
+    return output.exists() and camera_name in completed_cameras and not overwrite
 
 
 def write_json_atomic(path: Path, payload: dict) -> None:
@@ -237,7 +257,7 @@ def main() -> None:
     videos_dir.mkdir(parents=True, exist_ok=True)
     try:
         video_jobs = preflight_video_jobs(
-            dataset_root, videos_dir, args.camera_ids, args.overwrite
+            dataset_root, videos_dir, args.camera_ids
         )
     except FileNotFoundError as exc:
         raise SystemExit(str(exc)) from exc
@@ -253,10 +273,10 @@ def main() -> None:
         args.adjacent_spacing_metres,
     )
     try:
-        validate_resume_manifest(
+        completed_cameras = validate_resume_manifest(
             manifest_path,
             resume_signature,
-            has_reusable_outputs=any(job[-1] for job in video_jobs),
+            has_reusable_outputs=any(job[3].exists() for job in video_jobs),
             overwrite=args.overwrite,
         )
     except RuntimeError as exc:
@@ -270,20 +290,28 @@ def main() -> None:
         "adjacent_distances_rig_units": adjacent_distances,
         "median_adjacent_spacing_rig_units": median_spacing_units,
         "metres_per_rig_unit": scale,
+        "completed_cameras": sorted(completed_cameras),
         "records": [],
     }
     write_json_atomic(manifest_path, manifest)
 
-    for camera_id, camera_name, source, output, reuse_output in video_jobs:
+    for camera_id, camera_name, source, output in video_jobs:
         video_filter = f"trim=start={args.start_seconds}"
         if args.duration is not None:
             video_filter += f":duration={args.duration}"
         video_filter += f",setpts=PTS-STARTPTS,fps={args.fps}"
+        reuse_output = should_reuse_output(
+            output, camera_name, completed_cameras, args.overwrite
+        )
         if reuse_output:
             print(f"Reusing completed {camera_name}: {output}", flush=True)
         else:
             print(f"Encoding source camera {camera_id} as {camera_name}", flush=True)
             encode_video(source, output, video_filter)
+
+        completed_cameras.add(camera_name)
+        manifest["completed_cameras"] = sorted(completed_cameras)
+        write_json_atomic(manifest_path, manifest)
 
         camera = cameras[camera_id]
         center_m = [value * scale for value in camera["center_units"]]
