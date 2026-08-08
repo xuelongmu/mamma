@@ -274,6 +274,11 @@ def write_json_atomic(path: Path, payload: dict) -> None:
     temporary.replace(path)
 
 
+def invalidate_capture_descriptors(session_dir: Path) -> None:
+    for name in ("capture.json", "calibration.json"):
+        (session_dir / name).unlink(missing_ok=True)
+
+
 def main() -> None:
     args = parse_args()
     dataset_root = args.dataset_root.resolve()
@@ -323,6 +328,9 @@ def main() -> None:
     except RuntimeError as exc:
         raise SystemExit(str(exc)) from exc
 
+    # Never leave an earlier completed descriptor published while final videos
+    # are being replaced or an interrupted session is being resumed.
+    invalidate_capture_descriptors(session_dir)
     manifest = {
         **resume_signature,
         "state": "encoding",
@@ -366,12 +374,12 @@ def main() -> None:
         })
 
     calibration_path = session_dir / "calibration.json"
-    calibration_path.write_text(json.dumps(mamma_calibration, indent=2) + "\n")
+    write_json_atomic(calibration_path, mamma_calibration)
     capture = build_capture_descriptor(
         args.session, args.fps, list(mamma_calibration)
     )
     capture_path = session_dir / "capture.json"
-    capture_path.write_text(json.dumps(capture, indent=2) + "\n")
+    write_json_atomic(capture_path, capture)
     manifest["state"] = "complete"
     manifest["records"] = records
     write_json_atomic(manifest_path, manifest)

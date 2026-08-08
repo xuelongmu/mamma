@@ -139,6 +139,17 @@ class SjtuCalibrationTest(unittest.TestCase):
             self.assertFalse(output.exists())
             self.assertFalse((root / ".cam_00.partial.mp4").exists())
 
+    def test_invalidates_published_descriptors_before_encoding(self):
+        with tempfile.TemporaryDirectory() as directory:
+            session = Path(directory)
+            (session / "capture.json").write_text("{}")
+            (session / "calibration.json").write_text("{}")
+
+            MODULE.invalidate_capture_descriptors(session)
+
+            self.assertFalse((session / "capture.json").exists())
+            self.assertFalse((session / "calibration.json").exists())
+
     def test_capture_descriptor_uses_session_relative_paths(self):
         capture = MODULE.build_capture_descriptor("take", 25, ["cam_00"])
         self.assertEqual(capture["capture_root"], "..")
