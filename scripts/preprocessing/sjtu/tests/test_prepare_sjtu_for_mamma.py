@@ -30,6 +30,13 @@ class SjtuCalibrationTest(unittest.TestCase):
                 with self.assertRaises(argparse.ArgumentTypeError):
                     MODULE.positive_finite_float(value)
 
+    def test_session_must_be_a_single_path_component(self):
+        self.assertEqual(MODULE.single_path_component("badminton_take"), "badminton_take")
+        for value in ("", ".", "..", "sports/take", "sports\\take"):
+            with self.subTest(value=value):
+                with self.assertRaises(argparse.ArgumentTypeError):
+                    MODULE.single_path_component(value)
+
     def test_parses_five_line_camera_blocks(self):
         content = "\n".join([
             "camera 3",

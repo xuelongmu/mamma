@@ -10,6 +10,7 @@ Y-up display coordinate system before rendering.
 from __future__ import annotations
 
 import argparse
+import math
 import os
 from pathlib import Path
 import subprocess
@@ -31,6 +32,16 @@ PERSON_COLORS = ((255, 91, 82), (70, 211, 255), (119, 231, 160))
 DEFAULT_FACES = Path(__file__).resolve().parents[1] / "visualization/assets/smplx_faces.npy"
 
 
+def positive_finite_float(value: str) -> float:
+    try:
+        parsed = float(value)
+    except ValueError as exc:
+        raise argparse.ArgumentTypeError("must be a number") from exc
+    if not math.isfinite(parsed) or parsed <= 0:
+        raise argparse.ArgumentTypeError("must be finite and positive")
+    return parsed
+
+
 def parse_args() -> argparse.Namespace:
     parser = argparse.ArgumentParser(description=__doc__)
     parser.add_argument("--ma-3d-dir", required=True, type=Path)
@@ -39,7 +50,7 @@ def parse_args() -> argparse.Namespace:
     parser.add_argument("--cams", nargs="+", required=True)
     parser.add_argument("--output", required=True, type=Path)
     parser.add_argument("--title", required=True)
-    parser.add_argument("--fps", type=float, default=25.0)
+    parser.add_argument("--fps", type=positive_finite_float, default=25.0)
     parser.add_argument("--max-frames", type=int, default=None)
     parser.add_argument("--start-frame", type=int, default=0)
     parser.add_argument(
@@ -229,8 +240,9 @@ def main() -> int:
     if start >= end:
         raise ValueError(f"Empty frame range: {start}:{end} of {total_frames}")
 
+    selected_motions = [motion[start:end] for motion in motions]
     centers, floor_y, camera_distance, ground_span, ortho_ymag = frame_geometry(
-        motions
+        selected_motions
     )
     world_center = np.median(centers, axis=0)
     scene = pyrender.Scene(
@@ -297,7 +309,8 @@ def main() -> int:
         try:
             slot_w = CANVAS_W // len(captures)
             for frame_number in range(start, end):
-                target = centers[frame_number].copy()
+                local_frame = frame_number - start
+                target = centers[local_frame].copy()
                 target[1] = max(target[1], floor_y + 0.9)
                 eye = target + np.array(
                     [camera_distance * 0.48, camera_distance * 0.18, camera_distance],

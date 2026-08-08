@@ -38,11 +38,17 @@ def positive_finite_float(value: str) -> float:
     return parsed
 
 
+def single_path_component(value: str) -> str:
+    if not value or value in {".", ".."} or "/" in value or "\\" in value:
+        raise argparse.ArgumentTypeError("must be a single directory name")
+    return value
+
+
 def parse_args() -> argparse.Namespace:
     parser = argparse.ArgumentParser(description=__doc__)
     parser.add_argument("dataset_root", type=Path)
     parser.add_argument("output_root", type=Path)
-    parser.add_argument("session")
+    parser.add_argument("session", type=single_path_component)
     parser.add_argument("--camera-ids", nargs="+", type=int, default=list(range(12)))
     parser.add_argument("--start-seconds", type=float, default=0.0)
     parser.add_argument(
