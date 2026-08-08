@@ -100,6 +100,20 @@ class SjtuCalibrationTest(unittest.TestCase):
                 [[2.0, 0.0, 0.0], [0.0, 1.0, 0.0], [0.0, 0.0, 1.0]],
                 3,
             )
+
+    def test_rejects_nonpositive_focal_lengths(self):
+        content = "\n".join([
+            "camera 3",
+            "size 1920 1080",
+            "intrinsic 0 1001 960 540",
+            "rotation 1 0 0 0 1 0 0 0 1",
+            "center 1 2 3",
+        ])
+        with tempfile.TemporaryDirectory() as directory:
+            path = Path(directory) / "paras.txt"
+            path.write_text(content)
+            with self.assertRaisesRegex(ValueError, "Nonpositive focal length"):
+                MODULE.parse_calibration(path)
         with self.assertRaisesRegex(ValueError, "Improper rotation"):
             MODULE.validate_rotation_matrix(
                 [[-1.0, 0.0, 0.0], [0.0, 1.0, 0.0], [0.0, 0.0, 1.0]],

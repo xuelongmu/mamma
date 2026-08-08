@@ -51,8 +51,8 @@ machine-local progress belong in [`docs/status.md`](docs/status.md).
 - Conformance manifests track completion per camera so an interrupted
   overwrite cannot reuse stale final-path videos.
 - SJTU conformance rejects nested session names, invalid clip intervals,
-  non-finite or non-rigid calibration values, and nonpositive calibration image
-  sizes before starting an encode.
+  non-finite or non-rigid calibration values, nonpositive focal lengths, and
+  nonpositive calibration image sizes before starting an encode.
 - Resume compatibility includes the source camera files and calibration
   fingerprint, and published capture descriptors are invalidated during
   incomplete conformance runs.

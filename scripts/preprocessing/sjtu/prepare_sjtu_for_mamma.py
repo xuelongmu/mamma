@@ -136,6 +136,11 @@ def parse_calibration(path: Path) -> dict[int, dict]:
                 f"{width}x{height}"
             )
         fx, fy, cx, cy = map(float, lines[offset + 2].split()[1:])
+        if fx <= 0 or fy <= 0:
+            raise ValueError(
+                f"Nonpositive focal length for camera {camera_id}: "
+                f"fx={fx:g}, fy={fy:g}"
+            )
         r_values = list(map(float, lines[offset + 3].split()[1:]))
         center = list(map(float, lines[offset + 4].split()[1:]))
         if len(r_values) != 9 or len(center) != 3:
