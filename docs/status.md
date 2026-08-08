@@ -185,3 +185,14 @@ camera 05 remained an isolated high-error view for the second body.
   reports, and per-camera visualizations are rooted at
   `output/ma_masks/sjtu_basketball_full38s_12v/basketball_full38s/basketball_full38s/`.
   These generated local artifacts are not committed.
+
+## 2026-08-08 - Share-renderer smoke-test handoff correction
+
+- The one-frame renderer smoke test used badminton cameras `cam_05`, `cam_00`,
+  `cam_08`, and `cam_11` at local mesh and source frame 0.
+- Its ephemeral local artifact is `/tmp/mamma_share_renderer_smoke.mp4` on the
+  handoff WSL instance: one 1920x1080 frame encoded at 25 fps. It is not
+  committed or uploaded.
+- Next action: rerun this frame-0 check into the repository's gitignored `tmp/`
+  directory after renderer changes, add middle/end frame checks for framing and
+  synchronization, and only then render a full share video.
