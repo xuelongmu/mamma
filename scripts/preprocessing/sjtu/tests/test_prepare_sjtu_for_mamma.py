@@ -45,6 +45,11 @@ class SjtuCalibrationTest(unittest.TestCase):
                 with self.assertRaises(argparse.ArgumentTypeError):
                     MODULE.single_path_component(value)
 
+    def test_camera_ids_must_be_unique(self):
+        MODULE.validate_unique_camera_ids([0, 2, 5])
+        with self.assertRaisesRegex(ValueError, "duplicates"):
+            MODULE.validate_unique_camera_ids([0, 2, 0])
+
     def test_parses_five_line_camera_blocks(self):
         content = "\n".join([
             "camera 3",
@@ -252,6 +257,19 @@ class SjtuCalibrationTest(unittest.TestCase):
                     overwrite=False,
                 )
             )
+            jobs = [
+                (0, "cam_00", root / "0.mp4", old_complete),
+                (
+                    1,
+                    "cam_01",
+                    root / "1.mp4",
+                    stale_from_interrupted_overwrite,
+                ),
+            ]
+            self.assertTrue(
+                MODULE.is_reuse_only(jobs, {"cam_00", "cam_01"}, False)
+            )
+            self.assertFalse(MODULE.is_reuse_only(jobs, {"cam_00"}, False))
 
 
 if __name__ == "__main__":

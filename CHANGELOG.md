@@ -61,3 +61,7 @@ machine-local progress belong in [`docs/status.md`](docs/status.md).
   environment doctor before starting any pipeline job.
 - SJTU conformance verifies that every output stream has a positive, consistent
   frame count and satisfies the requested clip duration before publication.
+- Reuse-only conformance preserves verified published descriptors, and camera
+  selections reject duplicate IDs before creating a session.
+- Share-video rendering verifies that nonzero source-frame seeks were honored
+  before emitting synchronized filmstrip frames.

@@ -231,6 +231,18 @@ def validate_source_fps(
         )
 
 
+def seek_capture(capture: cv2.VideoCapture, camera: str, frame: int) -> None:
+    if frame == 0:
+        return
+    if not capture.set(cv2.CAP_PROP_POS_FRAMES, frame):
+        raise RuntimeError(f"{camera} could not seek to source frame {frame}")
+    actual_frame = capture.get(cv2.CAP_PROP_POS_FRAMES)
+    if not math.isfinite(actual_frame) or abs(actual_frame - frame) > 0.5:
+        raise RuntimeError(
+            f"{camera} sought to source frame {actual_frame:g}; expected {frame}"
+        )
+
+
 def label(
     frame: np.ndarray,
     text: str,
@@ -313,8 +325,9 @@ def main() -> int:
             validate_source_fps(cam, actual_fps, args.fps, reference_fps)
             if reference_fps is None:
                 reference_fps = actual_fps
-            capture.set(
-                cv2.CAP_PROP_POS_FRAMES,
+            seek_capture(
+                capture,
+                cam,
                 args.source_start_frame + start,
             )
     except BaseException:

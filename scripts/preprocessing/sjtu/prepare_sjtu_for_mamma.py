@@ -54,6 +54,11 @@ def single_path_component(value: str) -> str:
     return value
 
 
+def validate_unique_camera_ids(camera_ids: list[int]) -> None:
+    if len(set(camera_ids)) != len(camera_ids):
+        raise ValueError("--camera-ids must not contain duplicates")
+
+
 def parse_args() -> argparse.Namespace:
     parser = argparse.ArgumentParser(description=__doc__)
     parser.add_argument("dataset_root", type=Path)
@@ -313,6 +318,17 @@ def should_reuse_output(
     return output.exists() and camera_name in completed_cameras and not overwrite
 
 
+def is_reuse_only(
+    video_jobs: list[tuple[int, str, Path, Path]],
+    completed_cameras: set[str],
+    overwrite: bool,
+) -> bool:
+    return bool(video_jobs) and all(
+        should_reuse_output(output, camera_name, completed_cameras, overwrite)
+        for _, camera_name, _, output in video_jobs
+    )
+
+
 def write_json_atomic(path: Path, payload: dict) -> None:
     temporary = path.with_name(f".{path.name}.partial")
     temporary.write_text(json.dumps(payload, indent=2) + "\n")
@@ -326,6 +342,10 @@ def invalidate_capture_descriptors(session_dir: Path) -> None:
 
 def main() -> None:
     args = parse_args()
+    try:
+        validate_unique_camera_ids(args.camera_ids)
+    except ValueError as exc:
+        raise SystemExit(str(exc)) from exc
     dataset_root = args.dataset_root.resolve()
     cameras = parse_calibration(dataset_root / "paras.txt")
     missing = sorted(set(args.camera_ids) - set(cameras))
@@ -375,6 +395,33 @@ def main() -> None:
 
     reusable_cameras = completed_cameras
     completed_cameras = set()
+    expected_frame_count = (
+        None
+        if args.duration is None
+        else math.ceil(args.duration * args.fps - 1e-9)
+    )
+    capture_path = session_dir / "capture.json"
+    calibration_path = session_dir / "calibration.json"
+    if (
+        is_reuse_only(video_jobs, reusable_cameras, args.overwrite)
+        and capture_path.is_file()
+        and calibration_path.is_file()
+        and json.loads(manifest_path.read_text()).get("state") == "complete"
+    ):
+        reference_frame_count = None
+        for _, camera_name, _, output in video_jobs:
+            frame_count = probe_video_frame_count(output)
+            validate_frame_count(
+                camera_name,
+                frame_count,
+                expected_frame_count,
+                reference_frame_count,
+            )
+            if reference_frame_count is None:
+                reference_frame_count = frame_count
+        print(f"Capture already complete: {capture_path}", flush=True)
+        return
+
     # Never leave an earlier completed descriptor published while final videos
     # are being replaced or an interrupted session is being resumed.
     invalidate_capture_descriptors(session_dir)
@@ -392,11 +439,6 @@ def main() -> None:
     }
     write_json_atomic(manifest_path, manifest)
 
-    expected_frame_count = (
-        None
-        if args.duration is None
-        else math.ceil(args.duration * args.fps - 1e-9)
-    )
     reference_frame_count = None
     for camera_id, camera_name, source, output in video_jobs:
         video_filter = f"trim=start={args.start_seconds}"
@@ -437,12 +479,10 @@ def main() -> None:
             "center_metres": center_m,
         })
 
-    calibration_path = session_dir / "calibration.json"
     write_json_atomic(calibration_path, mamma_calibration)
     capture = build_capture_descriptor(
         args.session, args.fps, list(mamma_calibration)
     )
-    capture_path = session_dir / "capture.json"
     write_json_atomic(capture_path, capture)
     manifest["state"] = "complete"
     manifest["records"] = records
