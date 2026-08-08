@@ -122,6 +122,57 @@ ffprobe -v error -select_streams v:0 \
 Inspect frames near the beginning, middle, and end. A successful encode does
 not prove that framing, orientation, identity, or source-camera timing is good.
 
+## Internal interactive handoff
+
+For an authorized internal handoff, the smallest useful interactive bundle is:
+
+```text
+README.md
+requirements.txt
+scenes/<label>.rrd
+smplx_params/<label>_body_id-XX.npz   # optional
+open_scene.ps1                        # optional Windows helper
+open_scene.sh                         # optional Linux/WSL helper
+open_scene_macos.sh                   # optional macOS helper
+MANIFEST.sha256
+```
+
+Pin `rerun-sdk==0.23.1` in `requirements.txt`. The `.rrd` is already sufficient
+for interactive inspection; SMPL-X parameters are optional research outputs
+and do not replace the separately licensed body-model files.
+
+Windows PowerShell installation and direct launch:
+
+```powershell
+py -m pip install -r requirements.txt
+rerun scenes\eight_views.rrd --web-viewer
+```
+
+Linux/WSL installation and launch:
+
+```bash
+python3 -m pip install -r requirements.txt
+rerun scenes/eight_views.rrd --web-viewer
+```
+
+macOS can use an isolated environment:
+
+```bash
+python3 -m venv .venv
+source .venv/bin/activate
+python -m pip install -r requirements.txt
+rerun scenes/eight_views.rrd --web-viewer
+```
+
+Keep the viewer process in the foreground so the recipient can stop it with
+`Ctrl+C`. If helper scripts start multiple scenes, assign unique `--port` and
+`--web-viewer-port` pairs and print the complete recording URLs. Validate every
+archive by reading it back, include SHA-256 hashes, and inspect the extracted
+README and at least one scene before delivery.
+
+Do not place the bundle under tracked repository paths. Use `tmp/` only for
+local staging, then transfer it through the approved non-repository channel.
+
 ## Sharing and licensing
 
 - `.rrd` files embed dataset-derived camera frames. Confirm the dataset's

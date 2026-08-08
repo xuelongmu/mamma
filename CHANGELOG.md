@@ -19,6 +19,10 @@ machine-local progress belong in [`docs/status.md`](docs/status.md).
 - A share-video renderer with upright, Rerun-style presentation and a
   synchronized camera filmstrip.
 - Camera-count ablation captures and helper commands.
+- A quantitative MammaEval 4/6/8-view research entry with camera-quality and
+  ground-truth provenance caveats.
+- Cross-platform internal Rerun handoff instructions for Windows, Linux/WSL,
+  and macOS.
 
 ### Changed
 

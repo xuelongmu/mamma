@@ -168,6 +168,27 @@ An abbreviated collage does not mean the 3D optimizer used only those views.
 Pass every requested overlay camera explicitly when the collage itself is an
 experimental artifact.
 
+For example, after a six-view 3D solve, rerun the visualization stage with the
+complete list rather than accepting the four-camera default:
+
+```bash
+LD_LIBRARY_PATH=/home/xuelong/micromamba/envs/mamma/lib \
+__EGL_VENDOR_LIBRARY_DIRS=/home/xuelong/micromamba/envs/mamma/share/glvnd/egl_vendor.d \
+MPLBACKEND=Agg \
+micromamba run -n mamma python visualization/run_ma_vis.py \
+  --ma_2d_dir output/ma_2d/<tag>/<capture> \
+  --ma_3d_dir output/ma_3d/<tag>/<capture> \
+  --ma_cap_dir output/ma_cap/<tag>/<capture> \
+  --seq_name <sequence> \
+  --out_path output/ma_vis/<tag>/<capture> \
+  --cam_names_overlay IOI_01 IOI_03 IOI_05 IOI_09 IOI_11 IOI_13 \
+  --max_preview_cams 6 -v
+```
+
+Confirm the resulting log says `overlay rendered: 6/6` and inspect the labeled
+collage. Use the corresponding complete camera list and preview limit for any
+other subset.
+
 Use [`viewer.md`](viewer.md) to serve the `.rrd` recording. Always keep the
 complete `?url=rerun%2Bhttp...` query in the browser URL.
 

@@ -101,3 +101,41 @@ camera 05 remained an isolated high-error view for the second body.
   disposable local intermediates, including media. Media assets must never be
   committed or uploaded through repository hosting; external storage and
   transfer are handled outside the repository host.
+
+## 2026-08-08 - MammaEval 4/6/8-view quantitative check
+
+- Evaluated `230929_WhiteRabbit_CatchBall_50048_1`, source frames 60-89, with
+  the same calibration, locked-head SMPL-X model, 16-beta configuration, and
+  `configs/examples/presets/quick.yaml` optimization settings.
+- Four views: `IOI_01, IOI_05, IOI_09, IOI_13`; output tag `ablate_4v`.
+- Six views: `IOI_01, IOI_03, IOI_05, IOI_09, IOI_11, IOI_13`; output tag
+  `ablate_6v`.
+- Eight views: `IOI_01, IOI_03, IOI_05, IOI_07, IOI_09, IOI_11, IOI_13,
+  IOI_15`; output tag `ablate_8v`.
+
+| Views | PVE | MPJPE (127) | MPJPE (body 22) | Hand-region PVE | PA-PVE |
+| ---: | ---: | ---: | ---: | ---: | ---: |
+| 4 | 15.015 mm | 15.433 mm | 16.181 mm | 12.539 mm | 11.980 mm |
+| 6 | 14.858 mm | 15.372 mm | 15.712 mm | 12.514 mm | 11.883 mm |
+| 8 | 15.938 mm | 18.051 mm | 15.434 mm | 16.068 mm | 12.234 mm |
+
+- Six views were the best balanced result. Four views were effectively tied
+  for this short single-person interval. Eight views slightly improved the 22
+  principal body joints but degraded hands, auxiliary joints, and total
+  surface accuracy.
+- The eight-view regression was consistent with camera diagnostics: `IOI_07`
+  had a 22.72% missing-landmark ratio and 24.08 px effective uncertainty, while
+  `IOI_15` had 22.72 px effective uncertainty. The six-view set had no missing
+  landmarks in this interval.
+- The optimization ran with `use_gt=False`, so its saved `gt_*` arrays were
+  prediction duplicates. Metrics above were computed separately by
+  regenerating frames 60-89 from the original MammaEval `gt/global.npz` with
+  the matching subject template, model variant, beta count, and world frame.
+  They are local measurements, not an official evaluator export.
+- Primary local artifacts remain under
+  `output/ma_3d/ablate_{4,6,8}v/` and
+  `output/ma_vis/ablate_{4,6,8}v/`; generated media and `.rrd` files are not
+  committed.
+- Next action for a stronger conclusion: repeat the comparison on longer,
+  higher-motion and multi-person intervals while holding masks, identities,
+  and 2D landmarks fixed.
