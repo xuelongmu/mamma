@@ -163,3 +163,14 @@ camera 05 remained an isolated high-error view for the second body.
   every 4-, 6-, and 8-view share video, then prepare the approved files for
   external handoff without committing or uploading the generated media through
   repository hosting.
+
+## 2026-08-08 - Badminton ablation handoff correction
+
+- Inspect the 4-, 6-, and 8-view reconstruction results under
+  `output/ma_3d/sjtu_badminton_full25s_{4,6,8}v/` and their interactive scenes
+  under `output/ma_vis/sjtu_badminton_full25s_{4,6,8}v/`. These local generated
+  artifacts are not committed.
+- Next action: inspect beginning, middle, and end reprojections for both bodies,
+  quantify per-camera residuals with particular attention to body 1 and camera
+  05 in the 6-view solve, then compare those diagnostics with the pending true
+  12-view reconstruction.
