@@ -193,19 +193,25 @@ class StepBuilder:
         path = self._resolve("calibration")
         return ["--calibration", path] if path else []
 
-    def _undistort_flag(self) -> List[str]:
-        """Translate the ``undistort`` task-config field to ``["--undistort"]`` or [].
+    def _distortion_mode_flag(self) -> List[str]:
+        """Emit one canonical distortion policy for every frame-reading step.
 
-        ``step.undistort`` (per-step override) wins over ``global.undistort``;
-        both default ``False``. Only meaningful on frame-reading steps
-        (ma_masks, ma_2d, ma_vis). ma_3d has no distortion math, so the
-        flag would be a no-op there and is intentionally omitted from
-        :class:`Ma3dBuilder`.
+        ``global.distortion_mode`` defaults to ``auto``. The old boolean
+        ``undistort`` field remains a compatibility alias; a per-step value is
+        accepted only when no canonical mode is configured.
         """
-        val = self.step_cfg.get("undistort")
-        if val is None:
-            val = self.global_cfg.get("undistort", False)
-        return ["--undistort"] if bool(val) else []
+        mode = self.global_cfg.get("distortion_mode")
+        if mode is None:
+            legacy = self.step_cfg.get("undistort")
+            if legacy is None:
+                legacy = self.global_cfg.get("undistort")
+            mode = "undistort" if legacy is True else "raw" if legacy is False else "auto"
+        mode = str(mode).lower()
+        if mode not in ("auto", "undistort", "raw"):
+            raise RuntimeError(
+                f"global.distortion_mode must be auto/undistort/raw, got {mode!r}"
+            )
+        return ["--distortion-mode", mode]
 
     def _frame_range_flags(self) -> List[str]:
         """Translate ``global.start_frame`` / ``global.end_frame`` to argv.

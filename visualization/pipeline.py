@@ -104,6 +104,13 @@ def run_visualization(
         cameras = MultiViewCameras.load(gt_dir)
     else:
         log.info("seq=%s cameras from in-memory MultiViewCameras", seq_name)
+    if not rerun_light and ma_2d_dir is not None:
+        from capture.geometry import geometry_record, validate_geometry_manifest
+        mode = "undistort" if undistort else "raw"
+        records = [geometry_record(cam, mode, name=cam.name) for cam in cameras]
+        validate_geometry_manifest(
+            Path(ma_2d_dir) / seq_name, records, "ma_vis"
+        )
     motion_dir = ma_3d_dir / seq_name
     rrd_path = out_path / seq_name / "scene.rrd"
     rrd_path.parent.mkdir(parents=True, exist_ok=True)
@@ -164,6 +171,7 @@ def run_visualization(
                 cameras,
                 jpeg_quality=rerun_image_jpeg_quality,
                 num_workers=rerun_image_num_workers,
+                undistort=undistort,
             )
             log.info("logged camera image streams in %.2fs", time.perf_counter() - t)
 

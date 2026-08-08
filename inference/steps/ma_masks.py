@@ -51,7 +51,7 @@ class MaMasksBuilder(StepBuilder):
             argv += ["--ma_cap_dir", ma_cap_dir]
         argv += frame_source_flags
         argv += self._calibration_flag()
-        argv += self._undistort_flag()
+        argv += self._distortion_mode_flag()
         argv += ["--seq_name", seq_name]
         argv += ["--out", out]
         if self.dataset_name:

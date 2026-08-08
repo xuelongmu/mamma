@@ -86,10 +86,14 @@ SAM backends:
                              'Expected structure: images_root_dir/<cam_name>/<frame>.jpg. '
                              'Subdirectory names are used as camera names.')
     parser.add_argument('--calibration', default=None,
-                        help='Calibration file (yaml/xcp/json). Required when --undistort is set.')
+                        help='Calibration file (yaml/xcp/json). Required for standalone '
+                             'auto/undistort modes; chained mode reads calibration from ma_cap NPZs.')
+    parser.add_argument('--distortion-mode', choices=['auto', 'undistort', 'raw'],
+                        default=None,
+                        help='Pixel-space policy. auto (default) undistorts supported non-zero '
+                             'calibration; undistort requires calibration; raw is an explicit opt-out.')
     parser.add_argument('--undistort', action='store_true',
-                        help='Undistort frames via Vicon-radial-2 coefficients '
-                             '(from --calibration) before SAM / YOLO. Default off.')
+                        help='Deprecated alias for --distortion-mode undistort.')
 
     # --- SAM backend ---
     parser.add_argument('--sam_version', default='sam2', choices=['sam2', 'sam3', 'sam3_prompt'],
@@ -150,6 +154,10 @@ SAM backends:
                              'per-frame mask PNGs.')
 
     args = parser.parse_args()
+
+    if args.undistort and args.distortion_mode not in (None, 'undistort'):
+        parser.error('--undistort conflicts with --distortion-mode')
+    distortion_mode = args.distortion_mode or ('undistort' if args.undistort else 'auto')
 
     # Auto-select config based on sam_version if not specified
     if args.cfg is None:
@@ -274,6 +282,7 @@ SAM backends:
         images_root_dir=images_root_dir,
         interactive=args.interactive,
         undistort=args.undistort,
+        distortion_mode=distortion_mode,
         calibration_path=args.calibration,
     )
 

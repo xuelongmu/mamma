@@ -74,7 +74,7 @@ class Ma2dBuilder(StepBuilder):
         )
         argv += ["--mask_path", mask_path]
         argv += self._calibration_flag()
-        argv += self._undistort_flag()
+        argv += self._distortion_mode_flag()
         argv += self.flags
 
         # Translate per-installation paths from env -> argv.

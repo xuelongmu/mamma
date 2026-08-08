@@ -669,8 +669,8 @@ def _c_ma_masks_actionable_error():
             raise AssertionError("expected RuntimeError, none raised")
 
 
-@check("builders emit --undistort when global.undistort is set",
-       description="Phase 5 wiring: global.undistort propagates to ma_masks/ma_2d/ma_vis argv, never to ma_3d (no distortion math).")
+@check("builders emit one global distortion mode for frame-reading steps",
+       description="global.distortion_mode propagates identically to ma_masks/ma_2d/ma_vis, never to ma_3d.")
 def _c_undistort_flag_propagation():
     from inference.env import bootstrap_env
     from inference.steps.ma_masks import MaMasksBuilder
@@ -683,24 +683,21 @@ def _c_undistort_flag_propagation():
     with _clean_mamma_env():
         bootstrap_env()
         cfg = _load_fixture()
-        cfg["global"]["undistort"] = True
+        cfg["global"]["distortion_mode"] = "auto"
         cfg["global"]["calibration"] = "/tmp/calib.yaml"
-        # Frame-reading steps should emit --undistort. Strip any per-step
-        # `undistort: False` from the fixture so global.undistort wins.
-        for step_name in ("ma_masks", "ma_2d", "ma_vis"):
-            cfg[step_name].pop("undistort", None)
         for name, cls in [("ma_masks", MaMasksBuilder), ("ma_2d", Ma2dBuilder), ("ma_vis", MaVisBuilder)]:
             b = cls(cfg[name], cfg["global"], "local")
             argv = b.python_argv(_FIXTURE_SEQ)
-            assert "--undistort" in argv, f"{name}: --undistort missing: {argv}"
-        # ma_3d should NOT emit --undistort (no distortion math; flag would be a no-op):
+            idx = argv.index("--distortion-mode")
+            assert argv[idx + 1] == "auto", f"{name}: wrong distortion mode: {argv}"
+        # ma_3d validates geometry.json instead of receiving a frame policy.
         b = Ma3dBuilder(cfg["ma_3d"], cfg["global"], "local")
         argv = b.python_argv(_FIXTURE_SEQ)
-        assert "--undistort" not in argv, f"ma_3d: --undistort should not be emitted: {argv}"
+        assert "--distortion-mode" not in argv, f"ma_3d should not receive frame policy: {argv}"
 
 
-@check("step.undistort overrides global.undistort=false",
-       description="Per-step override: setting ma_2d.undistort=true while global.undistort=false should emit --undistort on ma_2d only.")
+@check("deprecated step.undistort alias works without a global mode",
+       description="Legacy configs map step.undistort to the new CLI while new presets use one global policy.")
 def _c_undistort_per_step_override():
     from inference.env import bootstrap_env
     from inference.steps.ma_masks import MaMasksBuilder
@@ -711,14 +708,17 @@ def _c_undistort_per_step_override():
     with _clean_mamma_env():
         bootstrap_env()
         cfg = _load_fixture()
-        cfg["global"]["undistort"] = False
+        cfg["global"].pop("distortion_mode", None)
         cfg["ma_2d"]["undistort"] = True
+        cfg["ma_masks"].pop("undistort", None)
         b2 = Ma2dBuilder(cfg["ma_2d"], cfg["global"], "local")
         bm = MaMasksBuilder(cfg["ma_masks"], cfg["global"], "local")
         argv_2d = b2.python_argv(_FIXTURE_SEQ)
         argv_masks = bm.python_argv(_FIXTURE_SEQ)
-        assert "--undistort" in argv_2d, f"ma_2d should have step-level --undistort: {argv_2d}"
-        assert "--undistort" not in argv_masks, f"ma_masks should not have --undistort: {argv_masks}"
+        idx_2d = argv_2d.index("--distortion-mode")
+        idx_masks = argv_masks.index("--distortion-mode")
+        assert argv_2d[idx_2d + 1] == "undistort", argv_2d
+        assert argv_masks[idx_masks + 1] == "auto", argv_masks
 
 
 @check("ma_masks builder translates global.videos_dir to --videos_dir argv",

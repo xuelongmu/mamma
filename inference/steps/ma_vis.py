@@ -49,6 +49,6 @@ class MaVisBuilder(StepBuilder):
                 os.path.join(self.out_root, "ma_cap", self.tag, self.dataset_name),
             ]
             argv += calibration_flag
-        argv += self._undistort_flag()
+        argv += self._distortion_mode_flag()
         argv += self.flags
         return argv

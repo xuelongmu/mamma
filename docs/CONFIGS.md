@@ -15,6 +15,7 @@ Shape (excerpted from `quick.yaml`):
 global:
   out_dir: output
   conda_env: mamma
+  distortion_mode: auto
   start_frame: 60
   end_frame: 90
 ma_cap:
@@ -64,6 +65,9 @@ Common edits:
 - **Skip a step:** set `<step>.enabled: false`. Downstream steps either skip too (if they depended on the disabled one) or carry on (if they have another path to their inputs).
 - **Tune a step:** add `<step>.flags: ["--<flag> <value>"]`. The string is `shlex`-split, so `"--sam_version sam3"` becomes two argv tokens.
 - **Limit frames:** set `global.start_frame` / `global.end_frame`. Only `ma_cap` reads these; downstream steps pick up the range via the per-camera NPZ.
+- **Lens handling:** keep `global.distortion_mode: auto` to canonicalize supported
+  non-zero distortion before masks and landmarks. Use `raw` only for explicit
+  diagnostics; the pinhole-only optimizer rejects raw-distorted manifests.
 - **Change conda env:** `global.conda_env: my_other_env`.
 
 ### Common per-step flags
@@ -86,7 +90,8 @@ Source: [`segmentation/run_ma_masks.py`](../segmentation/run_ma_masks.py).
 - `--expected_subjects N` — force the person count (auto-detected when unset).
 - `--init_frame N` — frame index used for person-detection initialisation.
 - `--interactive` — click-to-init through a GUI instead of YOLO auto-detect.
-- `--undistort` — apply Vicon-radial-2 undistortion before segmentation.
+- `--distortion-mode auto|undistort|raw` — pipeline pixel-space policy. `auto`
+  is the default and supports Vicon, radtan, and OpenCV Brown calibration.
 
 #### `ma_2d`
 
@@ -94,7 +99,8 @@ Source: [`landmarks/run_ma_2d.py`](../landmarks/run_ma_2d.py).
 
 - `--no-save_cam_output` — skip per-camera viz frames + video (faster).
 - `--video_fps F` — FPS for generated viz videos (default 5).
-- `--undistort` — undistort frames before landmark inference.
+- `--distortion-mode auto|undistort|raw` — must match the mask stage; a
+  `geometry.json` manifest prevents incompatible cached masks from being reused.
 
 #### `ma_3d`
 
@@ -181,6 +187,7 @@ For the on-disk data layout, see [`docs/INSTALL.md`](INSTALL.md).
 | `out_dir`       | path         | yes      | Root output directory. Override on the CLI with `--out-dir`. |
 | `cam_names`     | string list  | yes (run; presets omit) | Camera names. Forwarded as `--cam_names` to most steps. Presets omit this; the materializer derives it from `capture.cams` at submit time. |
 | `conda_env`     | string       | no       | Default conda env for the `conda` engine (default `mamma`). |
+| `distortion_mode` | enum       | no       | `auto` (default) canonicalizes supported non-zero distortion into pinhole pixels before detection; `undistort` requires calibration; `raw` is an explicit diagnostic opt-out. |
 | `jobs_log_dir`  | path         | no       | Where per-(step, seq) `.log/.out/.err` files go. Falls back to `$MAMMA_DATA_DIR/logs` or `~/.mamma/logs`. |
 | `username`      | string       | no       | Inserted into log paths so multi-user setups don't collide. Falls back to `$USER`. |
 | `bind`          | string list  | no       | Extra `apptainer --bind` / `docker -v` entries. |
@@ -235,6 +242,10 @@ runner (for DONE-sentinel resolution + input lookup) and the GUI
 | `<seq>`           | Sequence name from the capture JSON's `sequences[...].name`/`ioi`.     | Per-sequence isolation. Sequence names embed the capture prefix today (e.g. `140725_Breakdance_Improv_1_…`), so collisions are unlikely, but the segment keeps the layout self-describing. |
 
 DONE sentinels live at `…/<seq>/DONE` (same path; one extra file).
+Frame-producing stages also write `geometry.json`. It records the pixel space,
+camera intrinsics, distortion model, coefficients hash, and image size. A stage
+refuses to consume a present manifest that disagrees with its current geometry;
+legacy outputs without a manifest are accepted with a warning.
 Per-(step, seq) log files live in a different root under
 `global.jobs_log_dir`: `<jobs_log_dir>/<user>/<output_id>/<step>/<seq>.{log,out,err}`
 — no `<dataset_name>` segment there, since logs are short-lived.

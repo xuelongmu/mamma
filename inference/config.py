@@ -51,6 +51,7 @@ from typing import List
 from .runner import ALL_STEPS
 
 VALID_ENGINES = ("conda", "apptainer", "docker")
+VALID_DISTORTION_MODES = ("auto", "undistort", "raw")
 
 _YAML_SUFFIXES = (".yaml", ".yml")
 _JSON_SUFFIXES = (".json",)
@@ -504,6 +505,23 @@ def validate(cfg: dict) -> None:
     seq_ids = g.get("seq_ids", [])
     if seq_ids and not all(isinstance(s, int) for s in seq_ids):
         errors.append("global.seq_ids: must be a list of integers")
+
+    distortion_mode = str(g.get("distortion_mode", "auto")).lower()
+    if distortion_mode not in VALID_DISTORTION_MODES:
+        errors.append(
+            f"global.distortion_mode: {distortion_mode!r} not in "
+            f"{VALID_DISTORTION_MODES}"
+        )
+    if "distortion_mode" in g and "undistort" in g:
+        errors.append(
+            "global: distortion_mode conflicts with deprecated undistort; set only distortion_mode"
+        )
+    if "distortion_mode" in g:
+        for step in ("ma_masks", "ma_2d", "ma_vis"):
+            if isinstance(cfg.get(step), dict) and "undistort" in cfg[step]:
+                errors.append(
+                    f"{step}.undistort conflicts with global.distortion_mode; remove the deprecated field"
+                )
 
     enabled_count = 0
     for step in ALL_STEPS:

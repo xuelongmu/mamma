@@ -383,6 +383,7 @@ class RerunSceneLogger:
         *,
         jpeg_quality: int = 75,
         num_workers: Optional[int] = None,
+        undistort: bool = False,
     ) -> None:
         """Log a JPEG image stream onto each camera's ``image`` entity.
 
@@ -419,6 +420,7 @@ class RerunSceneLogger:
         if _repo_root not in _sys.path:
             _sys.path.insert(0, _repo_root)
         from capture.frame_source import ImageFileSource  # noqa: E402
+        from capture.undistort import undistort_rgb  # noqa: E402
 
         cam_list = [c for c in cameras]
         usable = [c for c in cam_list if c.video_path or c.image_paths]
@@ -464,6 +466,10 @@ class RerunSceneLogger:
                         ok, bgr = cap.read()
                         if not ok:
                             break
+                        if undistort:
+                            rgb = cv2.cvtColor(bgr, cv2.COLOR_BGR2RGB)
+                            rgb = undistort_rgb(rgb, cam)
+                            bgr = cv2.cvtColor(rgb, cv2.COLOR_RGB2BGR)
                         small = cv2.resize(bgr, (W, H), interpolation=cv2.INTER_AREA)
                         ok, buf = cv2.imencode(".jpg", small, encode_params)
                         if ok:
@@ -472,7 +478,10 @@ class RerunSceneLogger:
                     cap.release()
             else:
                 # ma_cap pre-slices img_abs_path to the canonical range.
-                source = ImageFileSource(list(cam.image_paths))
+                source = ImageFileSource(
+                    list(cam.image_paths), camera=cam, undistort=undistort,
+                    pixel_space="pinhole_undistorted" if undistort else "raw_distorted",
+                )
                 for frame_id in range(len(source)):
                     rgb = source.read_rgb(frame_id)
                     if rgb is None:

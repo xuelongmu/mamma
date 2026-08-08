@@ -267,6 +267,12 @@ def _write_cam_npz(
         "frame_start": int(frame_start),
         "frame_end": int(frame_end),
         "video_path": np.array(video_path),  # empty string when image-sourced
+        # Generic lens contract used to canonicalize downstream pixel-space
+        # artifacts. ``cam_int`` remains the projection matrix for the
+        # undistorted pinhole image.
+        "distortion_model": np.array(cam.distortion_model),
+        "distortion_coeffs": np.array(cam.distortion_coeffs, dtype=np.float64),
+        "pixel_space": np.array("raw_distorted"),
         # ``vicon_radial_2`` is only populated when the source format was
         # Vicon XCP (5-param radial). Otherwise leave it None -- downstream
         # consumers already handle the None case.
