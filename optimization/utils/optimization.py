@@ -439,10 +439,7 @@ class OptimizeSMPLX:
                 if total_loss.requires_grad:
                     total_loss.backward(retain_graph=True)
 
-                # FIXME: should be `total_loss` (the backpropped scalar). Returning
-                # `loss` makes LBFGS line search pick step sizes from a partial
-                # objective — direction stays correct, step sizes mildly suboptimal.
-                return loss
+                return total_loss
 
             optimizer.step(closure)
 

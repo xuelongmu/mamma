@@ -1,0 +1,17 @@
+{
+  "capture_root": "../../../data/sjtu_badminton",
+  "calib": "../../../data/sjtu_badminton/badminton_full25s/calibration.json",
+  "cam_fps": 25,
+  "sequences": {
+    "000": {
+      "name": "badminton_full25s"
+    }
+  },
+  "cams": [
+    "cam_05",
+    "cam_00",
+    "cam_08",
+    "cam_11"
+  ],
+  "videos_subdir": "videos"
+}
