@@ -153,6 +153,21 @@ class SjtuCalibrationTest(unittest.TestCase):
             self.assertFalse(output.exists())
             self.assertFalse((root / ".cam_00.partial.mp4").exists())
 
+    def test_probes_positive_video_frame_count(self):
+        result = mock.Mock(stdout="628\n")
+        with mock.patch.object(MODULE.subprocess, "run", return_value=result):
+            self.assertEqual(MODULE.probe_video_frame_count(Path("clip.mp4")), 628)
+
+    def test_rejects_empty_or_inconsistent_frame_counts(self):
+        result = mock.Mock(stdout="0\n")
+        with mock.patch.object(MODULE.subprocess, "run", return_value=result):
+            with self.assertRaisesRegex(RuntimeError, "no frames"):
+                MODULE.probe_video_frame_count(Path("clip.mp4"))
+        with self.assertRaisesRegex(RuntimeError, "expected 628"):
+            MODULE.validate_frame_count("cam_00", 627, 628, None)
+        with self.assertRaisesRegex(RuntimeError, "first camera has 628"):
+            MODULE.validate_frame_count("cam_01", 627, None, 628)
+
     def test_invalidates_published_descriptors_before_encoding(self):
         with tempfile.TemporaryDirectory() as directory:
             session = Path(directory)

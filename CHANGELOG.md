@@ -59,3 +59,5 @@ machine-local progress belong in [`docs/status.md`](docs/status.md).
   invalid render rates or source cameras with mismatched frame rates.
 - The camera-count ablation helper enters the `mamma` environment and runs the
   environment doctor before starting any pipeline job.
+- SJTU conformance verifies that every output stream has a positive, consistent
+  frame count and satisfies the requested clip duration before publication.

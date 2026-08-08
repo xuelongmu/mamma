@@ -177,6 +177,46 @@ def encode_video(source: Path, output: Path, video_filter: str) -> None:
         temporary.unlink(missing_ok=True)
 
 
+def probe_video_frame_count(path: Path) -> int:
+    result = subprocess.run(
+        [
+            "ffprobe", "-v", "error", "-select_streams", "v:0",
+            "-count_frames", "-show_entries", "stream=nb_read_frames",
+            "-of", "csv=p=0", str(path),
+        ],
+        check=True,
+        capture_output=True,
+        text=True,
+    )
+    try:
+        frame_count = int(result.stdout.strip())
+    except ValueError as exc:
+        raise RuntimeError(
+            f"Could not determine video frame count for {path}"
+        ) from exc
+    if frame_count <= 0:
+        raise RuntimeError(f"Video has no frames: {path}")
+    return frame_count
+
+
+def validate_frame_count(
+    camera_name: str,
+    frame_count: int,
+    expected_frame_count: int | None,
+    reference_frame_count: int | None,
+) -> None:
+    if expected_frame_count is not None and frame_count != expected_frame_count:
+        raise RuntimeError(
+            f"{camera_name} has {frame_count} frames; expected "
+            f"{expected_frame_count} for the requested duration"
+        )
+    if reference_frame_count is not None and frame_count != reference_frame_count:
+        raise RuntimeError(
+            f"{camera_name} has {frame_count} frames; the first camera has "
+            f"{reference_frame_count}"
+        )
+
+
 def build_capture_descriptor(
     session: str, fps: int, camera_names: list[str]
 ) -> dict:
@@ -333,6 +373,8 @@ def main() -> None:
     except RuntimeError as exc:
         raise SystemExit(str(exc)) from exc
 
+    reusable_cameras = completed_cameras
+    completed_cameras = set()
     # Never leave an earlier completed descriptor published while final videos
     # are being replaced or an interrupted session is being resumed.
     invalidate_capture_descriptors(session_dir)
@@ -344,18 +386,25 @@ def main() -> None:
         "adjacent_distances_rig_units": adjacent_distances,
         "median_adjacent_spacing_rig_units": median_spacing_units,
         "metres_per_rig_unit": scale,
-        "completed_cameras": sorted(completed_cameras),
+        "completed_cameras": [],
+        "frame_counts": {},
         "records": [],
     }
     write_json_atomic(manifest_path, manifest)
 
+    expected_frame_count = (
+        None
+        if args.duration is None
+        else math.ceil(args.duration * args.fps - 1e-9)
+    )
+    reference_frame_count = None
     for camera_id, camera_name, source, output in video_jobs:
         video_filter = f"trim=start={args.start_seconds}"
         if args.duration is not None:
             video_filter += f":duration={args.duration}"
         video_filter += f",setpts=PTS-STARTPTS,fps={args.fps}"
         reuse_output = should_reuse_output(
-            output, camera_name, completed_cameras, args.overwrite
+            output, camera_name, reusable_cameras, args.overwrite
         )
         if reuse_output:
             print(f"Reusing completed {camera_name}: {output}", flush=True)
@@ -363,8 +412,18 @@ def main() -> None:
             print(f"Encoding source camera {camera_id} as {camera_name}", flush=True)
             encode_video(source, output, video_filter)
 
+        frame_count = probe_video_frame_count(output)
+        validate_frame_count(
+            camera_name,
+            frame_count,
+            expected_frame_count,
+            reference_frame_count,
+        )
+        if reference_frame_count is None:
+            reference_frame_count = frame_count
         completed_cameras.add(camera_name)
         manifest["completed_cameras"] = sorted(completed_cameras)
+        manifest["frame_counts"][camera_name] = frame_count
         write_json_atomic(manifest_path, manifest)
 
         camera = cameras[camera_id]
