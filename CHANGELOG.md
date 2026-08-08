@@ -53,8 +53,9 @@ machine-local progress belong in [`docs/status.md`](docs/status.md).
 - SJTU conformance rejects nested session names, invalid clip intervals,
   non-finite or non-rigid calibration values, and nonpositive calibration image
   sizes before starting an encode.
-- Resume compatibility includes per-camera source fingerprints, and published
-  capture descriptors are invalidated during incomplete conformance runs.
+- Resume compatibility includes the source camera files and calibration
+  fingerprint, and published capture descriptors are invalidated during
+  incomplete conformance runs.
 - Share-video excerpts fit framing to their requested mesh interval and reject
   invalid render rates or source cameras with mismatched frame rates.
 - The camera-count ablation helper enters the `mamma` environment and runs the

@@ -227,11 +227,19 @@ class SjtuCalibrationTest(unittest.TestCase):
             self.assertNotEqual(original, replacement)
             self.assertEqual(replacement[0]["size_bytes"], len(b"replacement"))
 
+    def test_calibration_fingerprint_changes_with_content(self):
+        with tempfile.TemporaryDirectory() as directory:
+            path = Path(directory) / "paras.txt"
+            path.write_text("first")
+            original = MODULE.sha256_file(path)
+            path.write_text("corrected")
+            self.assertNotEqual(original, MODULE.sha256_file(path))
+
     def test_resume_manifest_rejects_changed_encode_settings(self):
         with tempfile.TemporaryDirectory() as directory:
             path = Path(directory) / "conformance.json"
             expected = MODULE.build_resume_signature(
-                Path("/source"), 0.0, 5.0, 25, 0.46, []
+                Path("/source"), 0.0, 5.0, 25, 0.46, "calibration", []
             )
             path.write_text(json.dumps(expected))
 
@@ -248,12 +256,20 @@ class SjtuCalibrationTest(unittest.TestCase):
                 MODULE.validate_resume_manifest(
                     path, changed_source, True, False
                 )
+            changed_calibration = {
+                **expected,
+                "calibration_sha256": "corrected-calibration",
+            }
+            with self.assertRaises(RuntimeError):
+                MODULE.validate_resume_manifest(
+                    path, changed_calibration, True, False
+                )
 
     def test_resume_manifest_is_required_for_existing_outputs(self):
         with tempfile.TemporaryDirectory() as directory:
             path = Path(directory) / "conformance.json"
             expected = MODULE.build_resume_signature(
-                Path("/source"), 0.0, None, 25, 0.46, []
+                Path("/source"), 0.0, None, 25, 0.46, "calibration", []
             )
             with self.assertRaises(RuntimeError):
                 MODULE.validate_resume_manifest(path, expected, True, False)

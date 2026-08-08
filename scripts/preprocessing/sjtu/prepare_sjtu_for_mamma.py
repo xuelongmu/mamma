@@ -11,6 +11,7 @@ adjacent cameras using the median separation in the calibration.
 from __future__ import annotations
 
 import argparse
+import hashlib
 import json
 import math
 import statistics
@@ -306,6 +307,7 @@ def build_resume_signature(
     duration_seconds: float | None,
     fps: int,
     adjacent_spacing_metres: float,
+    calibration_sha256: str,
     source_fingerprints: list[dict],
 ) -> dict:
     return {
@@ -314,8 +316,17 @@ def build_resume_signature(
         "duration_seconds": duration_seconds,
         "fps": fps,
         "adjacent_spacing_metres": adjacent_spacing_metres,
+        "calibration_sha256": calibration_sha256,
         "source_fingerprints": source_fingerprints,
     }
+
+
+def sha256_file(path: Path) -> str:
+    digest = hashlib.sha256()
+    with path.open("rb") as handle:
+        for chunk in iter(lambda: handle.read(1024 * 1024), b""):
+            digest.update(chunk)
+    return digest.hexdigest()
 
 
 def fingerprint_sources(
@@ -444,6 +455,7 @@ def main() -> None:
         args.duration,
         args.fps,
         args.adjacent_spacing_metres,
+        sha256_file(dataset_root / "paras.txt"),
         fingerprint_sources(video_jobs),
     )
     try:
