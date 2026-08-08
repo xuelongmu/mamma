@@ -38,6 +38,16 @@ def positive_finite_float(value: str) -> float:
     return parsed
 
 
+def nonnegative_finite_float(value: str) -> float:
+    try:
+        parsed = float(value)
+    except ValueError as exc:
+        raise argparse.ArgumentTypeError("must be a number") from exc
+    if not math.isfinite(parsed) or parsed < 0:
+        raise argparse.ArgumentTypeError("must be finite and non-negative")
+    return parsed
+
+
 def single_path_component(value: str) -> str:
     if not value or value in {".", ".."} or "/" in value or "\\" in value:
         raise argparse.ArgumentTypeError("must be a single directory name")
@@ -50,10 +60,12 @@ def parse_args() -> argparse.Namespace:
     parser.add_argument("output_root", type=Path)
     parser.add_argument("session", type=single_path_component)
     parser.add_argument("--camera-ids", nargs="+", type=int, default=list(range(12)))
-    parser.add_argument("--start-seconds", type=float, default=0.0)
+    parser.add_argument(
+        "--start-seconds", type=nonnegative_finite_float, default=0.0
+    )
     parser.add_argument(
         "--duration",
-        type=float,
+        type=positive_finite_float,
         default=None,
         help="Clip duration in seconds; omit to encode through the source end.",
     )

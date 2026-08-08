@@ -30,6 +30,14 @@ class SjtuCalibrationTest(unittest.TestCase):
                 with self.assertRaises(argparse.ArgumentTypeError):
                     MODULE.positive_finite_float(value)
 
+    def test_start_time_must_be_finite_and_nonnegative(self):
+        self.assertEqual(MODULE.nonnegative_finite_float("0"), 0.0)
+        self.assertEqual(MODULE.nonnegative_finite_float("1.5"), 1.5)
+        for value in ("-1", "nan", "inf"):
+            with self.subTest(value=value):
+                with self.assertRaises(argparse.ArgumentTypeError):
+                    MODULE.nonnegative_finite_float(value)
+
     def test_session_must_be_a_single_path_component(self):
         self.assertEqual(MODULE.single_path_component("badminton_take"), "badminton_take")
         for value in ("", ".", "..", "sports/take", "sports\\take"):
