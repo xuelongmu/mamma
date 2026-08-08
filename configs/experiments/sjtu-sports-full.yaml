@@ -54,4 +54,5 @@ ma_vis:
   flags:
   - --skip-overlay
   - --up-axis x
+  - --fps 25
   undistort: false

@@ -42,6 +42,15 @@ def parse_args() -> argparse.Namespace:
     parser.add_argument("--fps", type=float, default=25.0)
     parser.add_argument("--max-frames", type=int, default=None)
     parser.add_argument("--start-frame", type=int, default=0)
+    parser.add_argument(
+        "--source-start-frame",
+        type=int,
+        default=0,
+        help=(
+            "Source-video frame corresponding to reconstructed mesh frame 0. "
+            "Set this to the pipeline's global.start_frame for sliced runs."
+        ),
+    )
     return parser.parse_args()
 
 
@@ -212,6 +221,8 @@ def main() -> int:
     faces = np.load(args.faces).astype(np.int32)
     total_frames = len(motions[0])
     start = max(0, args.start_frame)
+    if args.source_start_frame < 0:
+        raise ValueError("--source-start-frame must be non-negative")
     end = total_frames if args.max_frames is None else min(
         total_frames, start + args.max_frames
     )
@@ -259,7 +270,10 @@ def main() -> int:
         capture = cv2.VideoCapture(str(path))
         if not capture.isOpened():
             raise FileNotFoundError(f"Could not open camera video: {path}")
-        capture.set(cv2.CAP_PROP_POS_FRAMES, start)
+        capture.set(
+            cv2.CAP_PROP_POS_FRAMES,
+            args.source_start_frame + start,
+        )
         captures.append(capture)
 
     args.output.parent.mkdir(parents=True, exist_ok=True)
@@ -333,7 +347,8 @@ def main() -> int:
                 canvas, args.title, (34, 41), cv2.FONT_HERSHEY_SIMPLEX,
                 0.92, (238, 242, 246), 2, cv2.LINE_AA,
             )
-            time_text = f"{(frame_number / args.fps):05.2f}s  |  {len(args.cams)} views"
+            source_frame = args.source_start_frame + frame_number
+            time_text = f"{(source_frame / args.fps):05.2f}s  |  {len(args.cams)} views"
             size, _ = cv2.getTextSize(
                 time_text, cv2.FONT_HERSHEY_SIMPLEX, 0.68, 1
             )

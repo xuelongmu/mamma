@@ -51,7 +51,7 @@ cameras. The observed median separation is 7.9028077 rig units, giving:
 This is a dataset-specific inference. Record the scale in the generated
 conformance manifest and validate projected scene points before a costly solve.
 
-SJTU's world X axis is vertical. Use X-up for every Rerun export.
+SJTU's world X axis is vertical. Use X-up and 25 fps for every Rerun export.
 
 ## Conform a sequence
 

@@ -107,6 +107,17 @@ micromamba run -n mamma python scripts/render_share_video.py \
   --title "Badminton reconstruction - 8 views"
 ```
 
+For a reconstruction produced with `global.start_frame` greater than zero,
+pass the same source offset separately so mesh frame zero stays synchronized
+with the camera filmstrip:
+
+```text
+--source-start-frame <global.start_frame>
+```
+
+`--start-frame` selects a local mesh frame at which to begin rendering; it does
+not replace the source offset. The source video seek is the sum of both values.
+
 The share renderer converts SJTU X-up vertices to a conventional Y-up display
 space. Do not apply a second rotation to already-converted vertices.
 

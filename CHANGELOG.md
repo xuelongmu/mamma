@@ -35,3 +35,8 @@ machine-local progress belong in [`docs/status.md`](docs/status.md).
 
 - X-up and Y-up reconstructions no longer appear sideways in Rerun when the
   corresponding visualization up-axis option is used.
+- Share-video filmstrips can preserve the source-frame offset for sliced
+  reconstructions.
+- SJTU visualization uses the conformed 25 fps timeline, and the adapter now
+  rejects unsupported fractional rates instead of allowing downstream drift.
+- SJTU conformance checks all source and destination paths before encoding.

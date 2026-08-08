@@ -103,12 +103,12 @@ address opens the Rerun homepage rather than the recording. See
   scripts. Keep `/home/<user>`, `/mnt/<drive>`, PIDs, and fixed ports in local
   examples rather than implementation defaults.
 - Never commit or upload media assets through the repository host, including
-  PR or issue attachments and release assets. Source footage, extracted
-  frames, images, audio, videos, rendered previews, and `.rrd` recordings may
-  exist locally only under the gitignored `tmp/` directory. Any storage or
-  transfer beyond that local scratch directory must be handled outside the
-  repository host. Record only non-sensitive metadata and external handling
-  instructions in the research log.
+  PR or issue attachments and release assets. Put ad hoc media in the
+  gitignored `tmp/` directory. Existing pipeline-managed footage and outputs
+  may remain under the repository's gitignored `data/` and `output/` roots.
+  Any storage or transfer beyond these local ignored directories must be
+  handled outside the repository host. Record only non-sensitive metadata and
+  external handling instructions in the research log.
 - Do not commit licensed SMPL-X model files, weights, generated outputs, or
   credentials.
 - Run `git diff --check`, relevant tests, and shell/Python syntax checks before

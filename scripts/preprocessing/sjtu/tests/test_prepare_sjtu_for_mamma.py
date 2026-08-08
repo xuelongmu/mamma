@@ -1,4 +1,5 @@
 import importlib.util
+import argparse
 import tempfile
 import unittest
 from pathlib import Path
@@ -12,6 +13,13 @@ SPEC.loader.exec_module(MODULE)
 
 
 class SjtuCalibrationTest(unittest.TestCase):
+    def test_fps_must_be_a_positive_integer(self):
+        self.assertEqual(MODULE.positive_integer("25"), 25)
+        with self.assertRaises(argparse.ArgumentTypeError):
+            MODULE.positive_integer("29.97")
+        with self.assertRaises(argparse.ArgumentTypeError):
+            MODULE.positive_integer("0")
+
     def test_parses_five_line_camera_blocks(self):
         content = "\n".join([
             "camera 3",
@@ -42,6 +50,20 @@ class SjtuCalibrationTest(unittest.TestCase):
             [1.0, 0.0, 0.0, -0.5],
             [0.0, 0.0, 1.0, -1.5],
         ])
+
+    def test_preflight_checks_every_output_before_encoding(self):
+        with tempfile.TemporaryDirectory() as directory:
+            root = Path(directory)
+            (root / "RGB").mkdir()
+            videos = root / "conformed"
+            videos.mkdir()
+            for camera_id in (0, 1):
+                (root / "RGB" / f"{camera_id}.mp4").touch()
+            (videos / "cam_01.mp4").touch()
+
+            with self.assertRaises(FileExistsError):
+                MODULE.preflight_video_jobs(root, videos, [0, 1], False)
+            self.assertFalse((videos / "cam_00.mp4").exists())
 
 
 if __name__ == "__main__":

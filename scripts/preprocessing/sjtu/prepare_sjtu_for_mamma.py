@@ -18,6 +18,16 @@ import subprocess
 from pathlib import Path
 
 
+def positive_integer(value: str) -> int:
+    try:
+        parsed = int(value)
+    except ValueError as exc:
+        raise argparse.ArgumentTypeError("must be an integer") from exc
+    if parsed <= 0:
+        raise argparse.ArgumentTypeError("must be positive")
+    return parsed
+
+
 def parse_args() -> argparse.Namespace:
     parser = argparse.ArgumentParser(description=__doc__)
     parser.add_argument("dataset_root", type=Path)
@@ -31,7 +41,12 @@ def parse_args() -> argparse.Namespace:
         default=None,
         help="Clip duration in seconds; omit to encode through the source end.",
     )
-    parser.add_argument("--fps", type=float, default=25.0)
+    parser.add_argument(
+        "--fps",
+        type=positive_integer,
+        default=25,
+        help="Positive integral frame rate (the current MAMMA capture path stores an integer).",
+    )
     parser.add_argument("--adjacent-spacing-metres", type=float, default=0.46)
     parser.add_argument("--overwrite", action="store_true")
     return parser.parse_args()
@@ -83,6 +98,36 @@ def metric_calibration(camera: dict, scale: float) -> dict:
     }
 
 
+def preflight_video_jobs(
+    dataset_root: Path,
+    videos_dir: Path,
+    camera_ids: list[int],
+    overwrite: bool,
+) -> list[tuple[int, str, Path, Path]]:
+    jobs = []
+    missing_sources = []
+    existing_outputs = []
+    for camera_id in camera_ids:
+        source = dataset_root / "RGB" / f"{camera_id}.mp4"
+        camera_name = f"cam_{camera_id:02d}"
+        output = videos_dir / f"{camera_name}.mp4"
+        if not source.is_file():
+            missing_sources.append(source)
+        if output.exists() and not overwrite:
+            existing_outputs.append(output)
+        jobs.append((camera_id, camera_name, source, output))
+
+    if missing_sources:
+        paths = "\n".join(f"- {path}" for path in missing_sources)
+        raise FileNotFoundError(f"Missing source videos:\n{paths}")
+    if existing_outputs:
+        paths = "\n".join(f"- {path}" for path in existing_outputs)
+        raise FileExistsError(
+            f"Refusing to overwrite existing outputs; pass --overwrite:\n{paths}"
+        )
+    return jobs
+
+
 def main() -> None:
     args = parse_args()
     dataset_root = args.dataset_root.resolve()
@@ -104,18 +149,16 @@ def main() -> None:
     session_dir = args.output_root.resolve() / args.session
     videos_dir = session_dir / "videos"
     videos_dir.mkdir(parents=True, exist_ok=True)
+    try:
+        video_jobs = preflight_video_jobs(
+            dataset_root, videos_dir, args.camera_ids, args.overwrite
+        )
+    except (FileNotFoundError, FileExistsError) as exc:
+        raise SystemExit(str(exc)) from exc
     mamma_calibration: dict[str, dict] = {}
     records = []
 
-    for camera_id in args.camera_ids:
-        source = dataset_root / "RGB" / f"{camera_id}.mp4"
-        if not source.is_file():
-            raise SystemExit(f"Missing source video: {source}")
-        camera_name = f"cam_{camera_id:02d}"
-        output = videos_dir / f"{camera_name}.mp4"
-        if output.exists() and not args.overwrite:
-            raise SystemExit(f"Refusing to overwrite {output}; pass --overwrite")
-
+    for camera_id, camera_name, source, output in video_jobs:
         video_filter = f"trim=start={args.start_seconds}"
         if args.duration is not None:
             video_filter += f":duration={args.duration}"

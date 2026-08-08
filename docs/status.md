@@ -77,9 +77,8 @@ camera 05 remained an isolated high-error view for the second body.
 - Conformed a true 12-camera badminton input: 628 frames per camera. The
   intended run reuses the existing eight camera masks and 2D landmarks and
   computes only cameras `01, 04, 06, 09` before the 12-view fit.
-- At the last check, an unrelated `viewer_4c4d.py` process held enough GPU
-  memory to prevent safe MAMMA landmark inference. Do not terminate it without
-  authorization. Recheck `nvidia-smi`, then resume the queued work.
+- Before resuming, recheck GPU availability with `nvidia-smi`. Do not terminate
+  unrelated processes without authorization.
 
 ## 2026-08-08 - Handoff documentation
 
