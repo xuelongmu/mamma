@@ -8,6 +8,8 @@ cd "$REPO_ROOT"
 # can abort on larger camera sets, so force the normal headless backend.
 export MPLBACKEND=Agg
 
+micromamba run -n mamma python -m inference doctor
+
 for views in 4 6 8; do
     micromamba run -n mamma python -m inference run \
         --cfg configs/ablations/presets/quick_2d.yaml \
