@@ -204,6 +204,40 @@ def probe_video_frame_count(path: Path) -> int:
     return frame_count
 
 
+def probe_video_dimensions(path: Path) -> tuple[int, int]:
+    result = subprocess.run(
+        [
+            "ffprobe", "-v", "error", "-select_streams", "v:0",
+            "-show_entries", "stream=width,height", "-of", "csv=s=x:p=0",
+            str(path),
+        ],
+        check=True,
+        capture_output=True,
+        text=True,
+    )
+    try:
+        width, height = map(int, result.stdout.strip().split("x"))
+    except ValueError as exc:
+        raise RuntimeError(
+            f"Could not determine video dimensions for {path}"
+        ) from exc
+    if width <= 0 or height <= 0:
+        raise RuntimeError(f"Video has invalid dimensions {width}x{height}: {path}")
+    return width, height
+
+
+def validate_video_dimensions(
+    camera_name: str,
+    actual: tuple[int, int],
+    expected: tuple[int, int],
+) -> None:
+    if actual != expected:
+        raise RuntimeError(
+            f"{camera_name} video dimensions {actual[0]}x{actual[1]} do not "
+            f"match calibration {expected[0]}x{expected[1]}"
+        )
+
+
 def validate_frame_count(
     camera_name: str,
     frame_count: int,
@@ -409,7 +443,7 @@ def main() -> None:
         and json.loads(manifest_path.read_text()).get("state") == "complete"
     ):
         reference_frame_count = None
-        for _, camera_name, _, output in video_jobs:
+        for camera_id, camera_name, _, output in video_jobs:
             frame_count = probe_video_frame_count(output)
             validate_frame_count(
                 camera_name,
@@ -419,6 +453,12 @@ def main() -> None:
             )
             if reference_frame_count is None:
                 reference_frame_count = frame_count
+            camera = cameras[camera_id]
+            validate_video_dimensions(
+                camera_name,
+                probe_video_dimensions(output),
+                (camera["width"], camera["height"]),
+            )
         print(f"Capture already complete: {capture_path}", flush=True)
         return
 
@@ -454,6 +494,7 @@ def main() -> None:
             print(f"Encoding source camera {camera_id} as {camera_name}", flush=True)
             encode_video(source, output, video_filter)
 
+        camera = cameras[camera_id]
         frame_count = probe_video_frame_count(output)
         validate_frame_count(
             camera_name,
@@ -463,12 +504,16 @@ def main() -> None:
         )
         if reference_frame_count is None:
             reference_frame_count = frame_count
+        validate_video_dimensions(
+            camera_name,
+            probe_video_dimensions(output),
+            (camera["width"], camera["height"]),
+        )
         completed_cameras.add(camera_name)
         manifest["completed_cameras"] = sorted(completed_cameras)
         manifest["frame_counts"][camera_name] = frame_count
         write_json_atomic(manifest_path, manifest)
 
-        camera = cameras[camera_id]
         center_m = [value * scale for value in camera["center_units"]]
         mamma_calibration[camera_name] = metric_calibration(camera, scale)
         records.append({

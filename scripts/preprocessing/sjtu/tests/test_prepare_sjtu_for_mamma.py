@@ -163,6 +163,17 @@ class SjtuCalibrationTest(unittest.TestCase):
         with mock.patch.object(MODULE.subprocess, "run", return_value=result):
             self.assertEqual(MODULE.probe_video_frame_count(Path("clip.mp4")), 628)
 
+    def test_probes_and_validates_video_dimensions(self):
+        result = mock.Mock(stdout="1920x1080\n")
+        with mock.patch.object(MODULE.subprocess, "run", return_value=result):
+            dimensions = MODULE.probe_video_dimensions(Path("clip.mp4"))
+        self.assertEqual(dimensions, (1920, 1080))
+        MODULE.validate_video_dimensions("cam_00", dimensions, (1920, 1080))
+        with self.assertRaisesRegex(RuntimeError, "do not match calibration"):
+            MODULE.validate_video_dimensions(
+                "cam_00", dimensions, (1280, 720)
+            )
+
     def test_rejects_empty_or_inconsistent_frame_counts(self):
         result = mock.Mock(stdout="0\n")
         with mock.patch.object(MODULE.subprocess, "run", return_value=result):
