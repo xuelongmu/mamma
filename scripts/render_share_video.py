@@ -208,6 +208,29 @@ def fit_letterbox(frame: np.ndarray, width: int, height: int) -> np.ndarray:
     return canvas
 
 
+def validate_source_fps(
+    camera: str,
+    actual_fps: float,
+    requested_fps: float,
+    reference_fps: float | None,
+) -> None:
+    tolerance = {"rel_tol": 1e-4, "abs_tol": 1e-2}
+    if not math.isfinite(actual_fps) or actual_fps <= 0:
+        raise ValueError(f"{camera} reports invalid source FPS {actual_fps}")
+    if not math.isclose(actual_fps, requested_fps, **tolerance):
+        raise ValueError(
+            f"{camera} source FPS {actual_fps:.6g} does not match "
+            f"requested render FPS {requested_fps:.6g}"
+        )
+    if reference_fps is not None and not math.isclose(
+        actual_fps, reference_fps, **tolerance
+    ):
+        raise ValueError(
+            f"{camera} source FPS {actual_fps:.6g} does not match "
+            f"the first camera FPS {reference_fps:.6g}"
+        )
+
+
 def label(
     frame: np.ndarray,
     text: str,
@@ -277,16 +300,28 @@ def main() -> int:
     renderer = pyrender.OffscreenRenderer(CANVAS_W, MAIN_H)
 
     captures = []
-    for cam in args.cams:
-        path = args.videos_dir / f"{cam}.mp4"
-        capture = cv2.VideoCapture(str(path))
-        if not capture.isOpened():
-            raise FileNotFoundError(f"Could not open camera video: {path}")
-        capture.set(
-            cv2.CAP_PROP_POS_FRAMES,
-            args.source_start_frame + start,
-        )
-        captures.append(capture)
+    reference_fps = None
+    try:
+        for cam in args.cams:
+            path = args.videos_dir / f"{cam}.mp4"
+            capture = cv2.VideoCapture(str(path))
+            if not capture.isOpened():
+                capture.release()
+                raise FileNotFoundError(f"Could not open camera video: {path}")
+            captures.append(capture)
+            actual_fps = capture.get(cv2.CAP_PROP_FPS)
+            validate_source_fps(cam, actual_fps, args.fps, reference_fps)
+            if reference_fps is None:
+                reference_fps = actual_fps
+            capture.set(
+                cv2.CAP_PROP_POS_FRAMES,
+                args.source_start_frame + start,
+            )
+    except BaseException:
+        for capture in captures:
+            capture.release()
+        renderer.delete()
+        raise
 
     args.output.parent.mkdir(parents=True, exist_ok=True)
     temporary_output = args.output.with_name(

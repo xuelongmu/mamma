@@ -101,6 +101,11 @@ def parse_calibration(path: Path) -> dict[int, dict]:
         center = list(map(float, lines[offset + 4].split()[1:]))
         if len(r_values) != 9 or len(center) != 3:
             raise ValueError(f"Invalid calibration block for camera {camera_id}")
+        numeric_values = [fx, fy, cx, cy, *r_values, *center]
+        if not all(math.isfinite(value) for value in numeric_values):
+            raise ValueError(
+                f"Non-finite calibration value for camera {camera_id}"
+            )
         rotation = [r_values[row * 3 : (row + 1) * 3] for row in range(3)]
         cameras[camera_id] = {
             "width": width,
