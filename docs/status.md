@@ -156,3 +156,10 @@ camera 05 remained an isolated high-error view for the second body.
   reprojections at the beginning, middle, and end, then reuse its compatible
   masks and 2D landmarks for the pending 12-view fit and any controlled
   camera-count comparison.
+
+## 2026-08-08 - Share-video next action correction
+
+- Validate synchronization and framing at the beginning, middle, and end of
+  every 4-, 6-, and 8-view share video, then prepare the approved files for
+  external handoff without committing or uploading the generated media through
+  repository hosting.
