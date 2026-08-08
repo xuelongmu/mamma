@@ -93,6 +93,34 @@ def mat_vec(matrix: list[list[float]], vector: list[float]) -> list[float]:
     return [sum(row[j] * vector[j] for j in range(3)) for row in matrix]
 
 
+def validate_rotation_matrix(
+    rotation: list[list[float]], camera_id: int, tolerance: float = 1e-4
+) -> None:
+    for column_a in range(3):
+        for column_b in range(3):
+            dot = sum(
+                rotation[row][column_a] * rotation[row][column_b]
+                for row in range(3)
+            )
+            expected = 1.0 if column_a == column_b else 0.0
+            if abs(dot - expected) > tolerance:
+                raise ValueError(
+                    f"Non-orthonormal rotation for camera {camera_id}"
+                )
+    determinant = (
+        rotation[0][0]
+        * (rotation[1][1] * rotation[2][2] - rotation[1][2] * rotation[2][1])
+        - rotation[0][1]
+        * (rotation[1][0] * rotation[2][2] - rotation[1][2] * rotation[2][0])
+        + rotation[0][2]
+        * (rotation[1][0] * rotation[2][1] - rotation[1][1] * rotation[2][0])
+    )
+    if abs(determinant - 1.0) > tolerance:
+        raise ValueError(
+            f"Improper rotation for camera {camera_id}: determinant {determinant:g}"
+        )
+
+
 def parse_calibration(path: Path) -> dict[int, dict]:
     lines = [line.strip() for line in path.read_text().splitlines() if line.strip()]
     if len(lines) % 5:
@@ -117,6 +145,7 @@ def parse_calibration(path: Path) -> dict[int, dict]:
                 f"Non-finite calibration value for camera {camera_id}"
             )
         rotation = [r_values[row * 3 : (row + 1) * 3] for row in range(3)]
+        validate_rotation_matrix(rotation, camera_id)
         cameras[camera_id] = {
             "width": width,
             "height": height,

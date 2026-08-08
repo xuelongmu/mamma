@@ -94,6 +94,18 @@ class SjtuCalibrationTest(unittest.TestCase):
             with self.assertRaisesRegex(ValueError, "Nonpositive image size"):
                 MODULE.parse_calibration(path)
 
+    def test_rejects_nonrigid_calibration_rotations(self):
+        with self.assertRaisesRegex(ValueError, "Non-orthonormal"):
+            MODULE.validate_rotation_matrix(
+                [[2.0, 0.0, 0.0], [0.0, 1.0, 0.0], [0.0, 0.0, 1.0]],
+                3,
+            )
+        with self.assertRaisesRegex(ValueError, "Improper rotation"):
+            MODULE.validate_rotation_matrix(
+                [[-1.0, 0.0, 0.0], [0.0, 1.0, 0.0], [0.0, 0.0, 1.0]],
+                3,
+            )
+
     def test_metric_extrinsic_uses_negative_rotated_camera_center(self):
         camera = {
             "width": 10,
