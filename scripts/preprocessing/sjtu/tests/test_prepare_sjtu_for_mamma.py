@@ -114,6 +114,20 @@ class SjtuCalibrationTest(unittest.TestCase):
             path.write_text(content)
             with self.assertRaisesRegex(ValueError, "Nonpositive focal length"):
                 MODULE.parse_calibration(path)
+
+    def test_rejects_duplicate_calibration_camera_ids(self):
+        block = [
+            "camera 3",
+            "size 1920 1080",
+            "intrinsic 1000 1001 960 540",
+            "rotation 1 0 0 0 1 0 0 0 1",
+            "center 1 2 3",
+        ]
+        with tempfile.TemporaryDirectory() as directory:
+            path = Path(directory) / "paras.txt"
+            path.write_text("\n".join([*block, *block]))
+            with self.assertRaisesRegex(ValueError, "Duplicate calibration"):
+                MODULE.parse_calibration(path)
         with self.assertRaisesRegex(ValueError, "Improper rotation"):
             MODULE.validate_rotation_matrix(
                 [[-1.0, 0.0, 0.0], [0.0, 1.0, 0.0], [0.0, 0.0, 1.0]],

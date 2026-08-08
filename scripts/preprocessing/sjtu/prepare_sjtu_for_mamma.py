@@ -129,6 +129,8 @@ def parse_calibration(path: Path) -> dict[int, dict]:
     cameras: dict[int, dict] = {}
     for offset in range(0, len(lines), 5):
         camera_id = int(lines[offset].split()[1])
+        if camera_id in cameras:
+            raise ValueError(f"Duplicate calibration camera ID {camera_id}")
         width, height = map(int, lines[offset + 1].split()[1:])
         if width <= 0 or height <= 0:
             raise ValueError(
