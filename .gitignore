@@ -21,6 +21,10 @@ outputs/
 var/
 logs/
 
+# Agent and developer scratch space. Temporary media and other local
+# intermediates may live here but must never be tracked or uploaded.
+/tmp/
+
 # landmarks/train.py consolidates all run artifacts (experiments, checkpoints,
 # wandb, Hydra run dir) under this single root at the repo root.
 landmark_outputs/
