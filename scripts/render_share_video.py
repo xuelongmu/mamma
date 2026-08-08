@@ -277,102 +277,126 @@ def main() -> int:
         captures.append(capture)
 
     args.output.parent.mkdir(parents=True, exist_ok=True)
+    temporary_output = args.output.with_name(
+        f".{args.output.stem}.partial{args.output.suffix}"
+    )
+    temporary_output.unlink(missing_ok=True)
     ffmpeg = subprocess.Popen(
         [
             "ffmpeg", "-y", "-loglevel", "error",
             "-f", "rawvideo", "-pix_fmt", "bgr24",
             "-s", f"{CANVAS_W}x{CANVAS_H}", "-r", str(args.fps), "-i", "-",
             "-an", "-c:v", "libx264", "-preset", "medium", "-crf", "18",
-            "-pix_fmt", "yuv420p", "-movflags", "+faststart", str(args.output),
+            "-pix_fmt", "yuv420p", "-movflags", "+faststart",
+            str(temporary_output),
         ],
         stdin=subprocess.PIPE,
     )
 
     try:
-        slot_w = CANVAS_W // len(captures)
-        for frame_number in range(start, end):
-            target = centers[frame_number].copy()
-            target[1] = max(target[1], floor_y + 0.9)
-            eye = target + np.array(
-                [camera_distance * 0.48, camera_distance * 0.18, camera_distance],
-                dtype=np.float32,
-            )
-            pose = look_at_pose(eye, target)
-            scene.set_pose(camera_node, pose)
-            scene.set_pose(light_node, pose)
-
-            for body_index, node in enumerate(body_nodes):
-                mesh = trimesh.Trimesh(
-                    motions[body_index][frame_number], faces, process=False
+        try:
+            slot_w = CANVAS_W // len(captures)
+            for frame_number in range(start, end):
+                target = centers[frame_number].copy()
+                target[1] = max(target[1], floor_y + 0.9)
+                eye = target + np.array(
+                    [camera_distance * 0.48, camera_distance * 0.18, camera_distance],
+                    dtype=np.float32,
                 )
-                node.mesh = pyrender.Mesh.from_trimesh(
-                    mesh,
-                    material=material(
-                        PERSON_COLORS[body_index % len(PERSON_COLORS)]
-                    ),
-                    smooth=True,
+                pose = look_at_pose(eye, target)
+                scene.set_pose(camera_node, pose)
+                scene.set_pose(light_node, pose)
+
+                for body_index, node in enumerate(body_nodes):
+                    mesh = trimesh.Trimesh(
+                        motions[body_index][frame_number], faces, process=False
+                    )
+                    node.mesh = pyrender.Mesh.from_trimesh(
+                        mesh,
+                        material=material(
+                            PERSON_COLORS[body_index % len(PERSON_COLORS)]
+                        ),
+                        smooth=True,
+                    )
+
+                rgb, _ = renderer.render(
+                    scene,
+                    flags=pyrender.RenderFlags.RGBA
+                    | pyrender.RenderFlags.SHADOWS_DIRECTIONAL,
                 )
-
-            rgb, _ = renderer.render(
-                scene,
-                flags=pyrender.RenderFlags.RGBA
-                | pyrender.RenderFlags.SHADOWS_DIRECTIONAL,
-            )
-            canvas = np.full((CANVAS_H, CANVAS_W, 3), 16, dtype=np.uint8)
-            canvas[:MAIN_H] = cv2.cvtColor(rgb[:, :, :3], cv2.COLOR_RGB2BGR)
-            cv2.rectangle(
-                canvas, (0, MAIN_H), (CANVAS_W, CANVAS_H), (12, 12, 14), -1
-            )
-
-            for index, (cam, capture) in enumerate(zip(args.cams, captures)):
-                ok, source = capture.read()
-                if not ok:
-                    source = np.zeros((90, 160, 3), dtype=np.uint8)
-                thumb_h = min(STRIP_H, round(slot_w * 9 / 16))
-                thumb = fit_letterbox(source, slot_w, thumb_h)
-                x0 = index * slot_w
-                y0 = MAIN_H + (STRIP_H - thumb_h) // 2
-                canvas[y0 : y0 + thumb_h, x0 : x0 + slot_w] = thumb
+                canvas = np.full((CANVAS_H, CANVAS_W, 3), 16, dtype=np.uint8)
+                canvas[:MAIN_H] = cv2.cvtColor(rgb[:, :, :3], cv2.COLOR_RGB2BGR)
                 cv2.rectangle(
-                    canvas,
-                    (x0, y0),
-                    (x0 + slot_w - 1, y0 + thumb_h - 1),
-                    (68, 68, 72),
-                    1,
+                    canvas, (0, MAIN_H), (CANVAS_W, CANVAS_H), (12, 12, 14), -1
                 )
-                label(canvas, cam.replace("cam_", "CAM "), (x0 + 10, y0 + 24), 0.52)
 
-            cv2.rectangle(canvas, (0, 0), (CANVAS_W, 62), (15, 20, 25), -1)
-            cv2.putText(
-                canvas, args.title, (34, 41), cv2.FONT_HERSHEY_SIMPLEX,
-                0.92, (238, 242, 246), 2, cv2.LINE_AA,
-            )
-            source_frame = args.source_start_frame + frame_number
-            time_text = f"{(source_frame / args.fps):05.2f}s  |  {len(args.cams)} views"
-            size, _ = cv2.getTextSize(
-                time_text, cv2.FONT_HERSHEY_SIMPLEX, 0.68, 1
-            )
-            cv2.putText(
-                canvas, time_text, (CANVAS_W - size[0] - 34, 39),
-                cv2.FONT_HERSHEY_SIMPLEX, 0.68, (168, 179, 189),
-                1, cv2.LINE_AA,
-            )
+                for index, (cam, capture) in enumerate(zip(args.cams, captures)):
+                    ok, source = capture.read()
+                    if not ok:
+                        source_frame = args.source_start_frame + frame_number
+                        raise RuntimeError(
+                            f"Failed to read {cam} at source frame {source_frame}"
+                        )
+                    thumb_h = min(STRIP_H, round(slot_w * 9 / 16))
+                    thumb = fit_letterbox(source, slot_w, thumb_h)
+                    x0 = index * slot_w
+                    y0 = MAIN_H + (STRIP_H - thumb_h) // 2
+                    canvas[y0 : y0 + thumb_h, x0 : x0 + slot_w] = thumb
+                    cv2.rectangle(
+                        canvas,
+                        (x0, y0),
+                        (x0 + slot_w - 1, y0 + thumb_h - 1),
+                        (68, 68, 72),
+                        1,
+                    )
+                    label(
+                        canvas,
+                        cam.replace("cam_", "CAM "),
+                        (x0 + 10, y0 + 24),
+                        0.52,
+                    )
 
-            assert ffmpeg.stdin is not None
-            ffmpeg.stdin.write(canvas.tobytes())
-            rendered = frame_number - start + 1
-            if rendered % 50 == 0 or frame_number + 1 == end:
-                print(f"rendered {rendered}/{end - start}", flush=True)
-    finally:
-        for capture in captures:
-            capture.release()
-        renderer.delete()
-        if ffmpeg.stdin is not None:
+                cv2.rectangle(canvas, (0, 0), (CANVAS_W, 62), (15, 20, 25), -1)
+                cv2.putText(
+                    canvas, args.title, (34, 41), cv2.FONT_HERSHEY_SIMPLEX,
+                    0.92, (238, 242, 246), 2, cv2.LINE_AA,
+                )
+                source_frame = args.source_start_frame + frame_number
+                time_text = (
+                    f"{(source_frame / args.fps):05.2f}s  |  {len(args.cams)} views"
+                )
+                size, _ = cv2.getTextSize(
+                    time_text, cv2.FONT_HERSHEY_SIMPLEX, 0.68, 1
+                )
+                cv2.putText(
+                    canvas, time_text, (CANVAS_W - size[0] - 34, 39),
+                    cv2.FONT_HERSHEY_SIMPLEX, 0.68, (168, 179, 189),
+                    1, cv2.LINE_AA,
+                )
+
+                assert ffmpeg.stdin is not None
+                ffmpeg.stdin.write(canvas.tobytes())
+                rendered = frame_number - start + 1
+                if rendered % 50 == 0 or frame_number + 1 == end:
+                    print(f"rendered {rendered}/{end - start}", flush=True)
+        finally:
+            for capture in captures:
+                capture.release()
+            renderer.delete()
+            if ffmpeg.stdin is not None and not ffmpeg.stdin.closed:
+                ffmpeg.stdin.close()
+
+        return_code = ffmpeg.wait()
+        if return_code:
+            raise RuntimeError(f"ffmpeg exited with status {return_code}")
+        temporary_output.replace(args.output)
+    except BaseException:
+        if ffmpeg.stdin is not None and not ffmpeg.stdin.closed:
             ffmpeg.stdin.close()
-
-    return_code = ffmpeg.wait()
-    if return_code:
-        raise RuntimeError(f"ffmpeg exited with status {return_code}")
+        if ffmpeg.poll() is None:
+            ffmpeg.wait()
+        temporary_output.unlink(missing_ok=True)
+        raise
     print(args.output)
     return 0
 

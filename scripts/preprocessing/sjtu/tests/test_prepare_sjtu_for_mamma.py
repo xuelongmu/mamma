@@ -1,8 +1,10 @@
 import importlib.util
 import argparse
+import subprocess
 import tempfile
 import unittest
 from pathlib import Path
+from unittest import mock
 
 
 MODULE_PATH = Path(__file__).parents[1] / "prepare_sjtu_for_mamma.py"
@@ -51,7 +53,7 @@ class SjtuCalibrationTest(unittest.TestCase):
             [0.0, 0.0, 1.0, -1.5],
         ])
 
-    def test_preflight_checks_every_output_before_encoding(self):
+    def test_preflight_reuses_existing_complete_outputs(self):
         with tempfile.TemporaryDirectory() as directory:
             root = Path(directory)
             (root / "RGB").mkdir()
@@ -61,9 +63,50 @@ class SjtuCalibrationTest(unittest.TestCase):
                 (root / "RGB" / f"{camera_id}.mp4").touch()
             (videos / "cam_01.mp4").touch()
 
-            with self.assertRaises(FileExistsError):
-                MODULE.preflight_video_jobs(root, videos, [0, 1], False)
+            jobs = MODULE.preflight_video_jobs(root, videos, [0, 1], False)
+            self.assertFalse(jobs[0][-1])
+            self.assertTrue(jobs[1][-1])
             self.assertFalse((videos / "cam_00.mp4").exists())
+
+    def test_encode_video_atomically_commits_success(self):
+        with tempfile.TemporaryDirectory() as directory:
+            root = Path(directory)
+            source = root / "source.mp4"
+            output = root / "cam_00.mp4"
+            source.touch()
+
+            def successful_run(command, check):
+                self.assertTrue(check)
+                Path(command[-1]).write_bytes(b"complete")
+
+            with mock.patch.object(MODULE.subprocess, "run", successful_run):
+                MODULE.encode_video(source, output, "fps=25")
+
+            self.assertEqual(output.read_bytes(), b"complete")
+            self.assertFalse((root / ".cam_00.partial.mp4").exists())
+
+    def test_encode_video_cleans_failed_temporary_output(self):
+        with tempfile.TemporaryDirectory() as directory:
+            root = Path(directory)
+            source = root / "source.mp4"
+            output = root / "cam_00.mp4"
+            source.touch()
+
+            def failed_run(command, check):
+                Path(command[-1]).write_bytes(b"partial")
+                raise subprocess.CalledProcessError(1, command)
+
+            with mock.patch.object(MODULE.subprocess, "run", failed_run):
+                with self.assertRaises(subprocess.CalledProcessError):
+                    MODULE.encode_video(source, output, "fps=25")
+
+            self.assertFalse(output.exists())
+            self.assertFalse((root / ".cam_00.partial.mp4").exists())
+
+    def test_capture_descriptor_uses_session_relative_paths(self):
+        capture = MODULE.build_capture_descriptor("take", 25, ["cam_00"])
+        self.assertEqual(capture["capture_root"], "..")
+        self.assertEqual(capture["calib"], "calibration.json")
 
 
 if __name__ == "__main__":

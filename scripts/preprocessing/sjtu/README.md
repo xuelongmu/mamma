@@ -5,6 +5,12 @@ clip for MAMMA. It re-encodes the selected cameras to a common frame rate and
 writes `calibration.json`, `capture.json`, and an auditable
 `conformance.json` manifest.
 
+Completed camera videos are reused when resuming. New encodes are written to a
+temporary sibling and atomically renamed only after ffmpeg succeeds;
+`--overwrite` intentionally recomputes every selected camera. Generated
+capture paths are relative to `capture.json` so the conformed session can move
+with its parent directory.
+
 The adapter converts the documented calibration convention
 `Xc = R * (Xw - C)` into the MAMMA world-to-camera convention
 `[R | -R*C_metres]`. Metric scale is inferred from adjacent camera spacing;

@@ -103,29 +103,53 @@ def preflight_video_jobs(
     videos_dir: Path,
     camera_ids: list[int],
     overwrite: bool,
-) -> list[tuple[int, str, Path, Path]]:
+) -> list[tuple[int, str, Path, Path, bool]]:
     jobs = []
     missing_sources = []
-    existing_outputs = []
     for camera_id in camera_ids:
         source = dataset_root / "RGB" / f"{camera_id}.mp4"
         camera_name = f"cam_{camera_id:02d}"
         output = videos_dir / f"{camera_name}.mp4"
         if not source.is_file():
             missing_sources.append(source)
-        if output.exists() and not overwrite:
-            existing_outputs.append(output)
-        jobs.append((camera_id, camera_name, source, output))
+        reuse_output = output.exists() and not overwrite
+        jobs.append((camera_id, camera_name, source, output, reuse_output))
 
     if missing_sources:
         paths = "\n".join(f"- {path}" for path in missing_sources)
         raise FileNotFoundError(f"Missing source videos:\n{paths}")
-    if existing_outputs:
-        paths = "\n".join(f"- {path}" for path in existing_outputs)
-        raise FileExistsError(
-            f"Refusing to overwrite existing outputs; pass --overwrite:\n{paths}"
-        )
     return jobs
+
+
+def encode_video(source: Path, output: Path, video_filter: str) -> None:
+    temporary = output.with_name(f".{output.stem}.partial{output.suffix}")
+    temporary.unlink(missing_ok=True)
+    command = [
+        "ffmpeg", "-hide_banner", "-loglevel", "error", "-y",
+        "-i", str(source), "-an", "-vf", video_filter,
+        "-c:v", "libx264", "-preset", "fast", "-crf", "18",
+        "-pix_fmt", "yuv420p", str(temporary),
+    ]
+    try:
+        subprocess.run(command, check=True)
+        temporary.replace(output)
+    finally:
+        temporary.unlink(missing_ok=True)
+
+
+def build_capture_descriptor(
+    session: str, fps: int, camera_names: list[str]
+) -> dict:
+    return {
+        # capture.json lives inside the session directory. Resolve these paths
+        # relative to that file so the conformed tree remains portable.
+        "capture_root": "..",
+        "calib": "calibration.json",
+        "cam_fps": fps,
+        "videos_subdir": "videos",
+        "cams": camera_names,
+        "sequences": {"000": {"name": session}},
+    }
 
 
 def main() -> None:
@@ -153,24 +177,21 @@ def main() -> None:
         video_jobs = preflight_video_jobs(
             dataset_root, videos_dir, args.camera_ids, args.overwrite
         )
-    except (FileNotFoundError, FileExistsError) as exc:
+    except FileNotFoundError as exc:
         raise SystemExit(str(exc)) from exc
     mamma_calibration: dict[str, dict] = {}
     records = []
 
-    for camera_id, camera_name, source, output in video_jobs:
+    for camera_id, camera_name, source, output, reuse_output in video_jobs:
         video_filter = f"trim=start={args.start_seconds}"
         if args.duration is not None:
             video_filter += f":duration={args.duration}"
         video_filter += f",setpts=PTS-STARTPTS,fps={args.fps}"
-        command = [
-            "ffmpeg", "-hide_banner", "-loglevel", "error",
-            "-y" if args.overwrite else "-n", "-i", str(source), "-an",
-            "-vf", video_filter, "-c:v", "libx264", "-preset", "fast",
-            "-crf", "18", "-pix_fmt", "yuv420p", str(output),
-        ]
-        print(f"Encoding source camera {camera_id} as {camera_name}", flush=True)
-        subprocess.run(command, check=True)
+        if reuse_output:
+            print(f"Reusing completed {camera_name}: {output}", flush=True)
+        else:
+            print(f"Encoding source camera {camera_id} as {camera_name}", flush=True)
+            encode_video(source, output, video_filter)
 
         camera = cameras[camera_id]
         center_m = [value * scale for value in camera["center_units"]]
@@ -185,14 +206,9 @@ def main() -> None:
 
     calibration_path = session_dir / "calibration.json"
     calibration_path.write_text(json.dumps(mamma_calibration, indent=2) + "\n")
-    capture = {
-        "capture_root": str(args.output_root.resolve()),
-        "calib": str(calibration_path),
-        "cam_fps": args.fps,
-        "videos_subdir": "videos",
-        "cams": list(mamma_calibration),
-        "sequences": {"000": {"name": args.session}},
-    }
+    capture = build_capture_descriptor(
+        args.session, args.fps, list(mamma_calibration)
+    )
     capture_path = session_dir / "capture.json"
     capture_path.write_text(json.dumps(capture, indent=2) + "\n")
     manifest = {

@@ -40,3 +40,7 @@ machine-local progress belong in [`docs/status.md`](docs/status.md).
 - SJTU visualization uses the conformed 25 fps timeline, and the adapter now
   rejects unsupported fractional rates instead of allowing downstream drift.
 - SJTU conformance checks all source and destination paths before encoding.
+- SJTU conformance resumes completed cameras, atomically publishes new encodes,
+  and writes portable session-relative capture paths.
+- Share-video rendering now fails with camera and frame context when a source
+  stream cannot supply a requested filmstrip frame.

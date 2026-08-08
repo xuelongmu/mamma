@@ -138,3 +138,14 @@ camera 05 remained an isolated high-error view for the second body.
 - Next action for a stronger conclusion: repeat the comparison on longer,
   higher-motion and multi-person intervals while holding masks, identities,
   and 2D landmarks fixed.
+
+## 2026-08-08 - Correction to MammaEval camera-count interpretation
+
+- The `ablate_4v`, `ablate_6v`, and `ablate_8v` runs used separate pipeline
+  tags, so masks, identity assignment, and 2D landmarks were recomputed rather
+  than reused from the largest camera set.
+- The table above is therefore an uncontrolled exploratory comparison, not an
+  isolated 3D camera-count ablation. Do not attribute the differences solely
+  to view count.
+- A controlled rerun must reuse the same compatible upstream evidence and vary
+  only the cameras supplied to the 3D fit.

@@ -79,8 +79,10 @@ For all 12 cameras:
 --camera-ids 5 0 1 2 3 4 6 7 8 9 10 11
 ```
 
-The adapter refuses to overwrite conformed videos unless `--overwrite` is
-provided.
+The adapter reuses completed conformed videos when resuming. Each new encode is
+written atomically so an interrupted ffmpeg process cannot leave a partial
+final-path MP4. Pass `--overwrite` to intentionally recompute every selected
+camera.
 
 ## Validate before MAMMA
 
