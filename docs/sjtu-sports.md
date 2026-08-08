@@ -82,7 +82,8 @@ For all 12 cameras:
 The adapter reuses completed conformed videos when resuming. Each new encode is
 written atomically so an interrupted ffmpeg process cannot leave a partial
 final-path MP4. Pass `--overwrite` to intentionally recompute every selected
-camera.
+camera. Resume is rejected when the existing conformance manifest disagrees
+with the source root, interval, frame rate, or camera-spacing assumption.
 
 ## Validate before MAMMA
 

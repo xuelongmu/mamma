@@ -28,6 +28,16 @@ def positive_integer(value: str) -> int:
     return parsed
 
 
+def positive_finite_float(value: str) -> float:
+    try:
+        parsed = float(value)
+    except ValueError as exc:
+        raise argparse.ArgumentTypeError("must be a number") from exc
+    if not math.isfinite(parsed) or parsed <= 0:
+        raise argparse.ArgumentTypeError("must be finite and positive")
+    return parsed
+
+
 def parse_args() -> argparse.Namespace:
     parser = argparse.ArgumentParser(description=__doc__)
     parser.add_argument("dataset_root", type=Path)
@@ -47,7 +57,11 @@ def parse_args() -> argparse.Namespace:
         default=25,
         help="Positive integral frame rate (the current MAMMA capture path stores an integer).",
     )
-    parser.add_argument("--adjacent-spacing-metres", type=float, default=0.46)
+    parser.add_argument(
+        "--adjacent-spacing-metres",
+        type=positive_finite_float,
+        default=0.46,
+    )
     parser.add_argument("--overwrite", action="store_true")
     return parser.parse_args()
 
@@ -152,6 +166,54 @@ def build_capture_descriptor(
     }
 
 
+def build_resume_signature(
+    dataset_root: Path,
+    start_seconds: float,
+    duration_seconds: float | None,
+    fps: int,
+    adjacent_spacing_metres: float,
+) -> dict:
+    return {
+        "source": str(dataset_root.resolve()),
+        "start_seconds": start_seconds,
+        "duration_seconds": duration_seconds,
+        "fps": fps,
+        "adjacent_spacing_metres": adjacent_spacing_metres,
+    }
+
+
+def validate_resume_manifest(
+    manifest_path: Path,
+    expected: dict,
+    has_reusable_outputs: bool,
+    overwrite: bool,
+) -> None:
+    if overwrite or not has_reusable_outputs:
+        return
+    try:
+        existing = json.loads(manifest_path.read_text())
+    except (FileNotFoundError, json.JSONDecodeError) as exc:
+        raise RuntimeError(
+            "Existing camera outputs cannot be verified without a valid "
+            f"{manifest_path}; pass --overwrite or use a new session"
+        ) from exc
+
+    mismatches = [
+        key for key, value in expected.items() if existing.get(key) != value
+    ]
+    if mismatches:
+        raise RuntimeError(
+            "Existing camera outputs were created with incompatible settings "
+            f"({', '.join(mismatches)}); pass --overwrite or use a new session"
+        )
+
+
+def write_json_atomic(path: Path, payload: dict) -> None:
+    temporary = path.with_name(f".{path.name}.partial")
+    temporary.write_text(json.dumps(payload, indent=2) + "\n")
+    temporary.replace(path)
+
+
 def main() -> None:
     args = parse_args()
     dataset_root = args.dataset_root.resolve()
@@ -182,6 +244,36 @@ def main() -> None:
     mamma_calibration: dict[str, dict] = {}
     records = []
 
+    manifest_path = session_dir / "conformance.json"
+    resume_signature = build_resume_signature(
+        dataset_root,
+        args.start_seconds,
+        args.duration,
+        args.fps,
+        args.adjacent_spacing_metres,
+    )
+    try:
+        validate_resume_manifest(
+            manifest_path,
+            resume_signature,
+            has_reusable_outputs=any(job[-1] for job in video_jobs),
+            overwrite=args.overwrite,
+        )
+    except RuntimeError as exc:
+        raise SystemExit(str(exc)) from exc
+
+    manifest = {
+        **resume_signature,
+        "state": "encoding",
+        "camera_order": args.camera_ids,
+        "calibration_convention": "Xc = R @ Xw + (-R @ C_metres)",
+        "adjacent_distances_rig_units": adjacent_distances,
+        "median_adjacent_spacing_rig_units": median_spacing_units,
+        "metres_per_rig_unit": scale,
+        "records": [],
+    }
+    write_json_atomic(manifest_path, manifest)
+
     for camera_id, camera_name, source, output, reuse_output in video_jobs:
         video_filter = f"trim=start={args.start_seconds}"
         if args.duration is not None:
@@ -211,22 +303,9 @@ def main() -> None:
     )
     capture_path = session_dir / "capture.json"
     capture_path.write_text(json.dumps(capture, indent=2) + "\n")
-    manifest = {
-        "source": str(dataset_root),
-        "start_seconds": args.start_seconds,
-        "duration_seconds": args.duration,
-        "fps": args.fps,
-        "camera_order": args.camera_ids,
-        "calibration_convention": "Xc = R @ Xw + (-R @ C_metres)",
-        "adjacent_spacing_metres": args.adjacent_spacing_metres,
-        "adjacent_distances_rig_units": adjacent_distances,
-        "median_adjacent_spacing_rig_units": median_spacing_units,
-        "metres_per_rig_unit": scale,
-        "records": records,
-    }
-    (session_dir / "conformance.json").write_text(
-        json.dumps(manifest, indent=2) + "\n"
-    )
+    manifest["state"] = "complete"
+    manifest["records"] = records
+    write_json_atomic(manifest_path, manifest)
     print(f"Scale: {scale:.9f} metres per rig unit", flush=True)
     print(f"Wrote MAMMA capture: {capture_path}", flush=True)
 

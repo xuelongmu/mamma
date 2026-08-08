@@ -1,5 +1,6 @@
 import importlib.util
 import argparse
+import json
 import subprocess
 import tempfile
 import unittest
@@ -21,6 +22,13 @@ class SjtuCalibrationTest(unittest.TestCase):
             MODULE.positive_integer("29.97")
         with self.assertRaises(argparse.ArgumentTypeError):
             MODULE.positive_integer("0")
+
+    def test_physical_spacing_must_be_finite_and_positive(self):
+        self.assertEqual(MODULE.positive_finite_float("0.46"), 0.46)
+        for value in ("0", "-1", "nan", "inf"):
+            with self.subTest(value=value):
+                with self.assertRaises(argparse.ArgumentTypeError):
+                    MODULE.positive_finite_float(value)
 
     def test_parses_five_line_camera_blocks(self):
         content = "\n".join([
@@ -107,6 +115,28 @@ class SjtuCalibrationTest(unittest.TestCase):
         capture = MODULE.build_capture_descriptor("take", 25, ["cam_00"])
         self.assertEqual(capture["capture_root"], "..")
         self.assertEqual(capture["calib"], "calibration.json")
+
+    def test_resume_manifest_rejects_changed_encode_settings(self):
+        with tempfile.TemporaryDirectory() as directory:
+            path = Path(directory) / "conformance.json"
+            expected = MODULE.build_resume_signature(
+                Path("/source"), 0.0, 5.0, 25, 0.46
+            )
+            path.write_text(json.dumps(expected))
+
+            MODULE.validate_resume_manifest(path, expected, True, False)
+            changed = {**expected, "start_seconds": 1.0}
+            with self.assertRaises(RuntimeError):
+                MODULE.validate_resume_manifest(path, changed, True, False)
+
+    def test_resume_manifest_is_required_for_existing_outputs(self):
+        with tempfile.TemporaryDirectory() as directory:
+            path = Path(directory) / "conformance.json"
+            expected = MODULE.build_resume_signature(
+                Path("/source"), 0.0, None, 25, 0.46
+            )
+            with self.assertRaises(RuntimeError):
+                MODULE.validate_resume_manifest(path, expected, True, False)
 
 
 if __name__ == "__main__":

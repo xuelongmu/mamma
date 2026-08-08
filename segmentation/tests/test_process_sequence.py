@@ -5,6 +5,7 @@ import os
 import pytest
 
 from process_sequence import (
+    _collage_fps,
     cam_data_from_image_dir,
     find_image_cam_dirs,
     find_video_files,
@@ -13,6 +14,15 @@ from process_sequence import (
     normalize_cam_names,
     reorder_ioi_paths,
 )
+
+
+class TestCollageFps:
+    def test_defaults_to_30(self):
+        assert _collage_fps({}) == 30.0
+
+    def test_uses_mask_export_fps(self):
+        cfg = {"exports": {"masked_outputs_fps": 25.0}}
+        assert _collage_fps(cfg) == 25.0
 
 
 class TestNormalizeCamNames:

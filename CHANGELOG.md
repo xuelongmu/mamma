@@ -44,3 +44,7 @@ machine-local progress belong in [`docs/status.md`](docs/status.md).
   and writes portable session-relative capture paths.
 - Share-video rendering now fails with camera and frame context when a source
   stream cannot supply a requested filmstrip frame.
+- Resume rejects conformed videos whose source or encode settings do not match
+  the recorded manifest, and physical camera spacing must be finite and
+  positive.
+- SJTU mask videos and collages now use the capture's documented 25 fps rate.
