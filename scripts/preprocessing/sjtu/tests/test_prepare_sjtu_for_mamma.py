@@ -130,11 +130,26 @@ class SjtuCalibrationTest(unittest.TestCase):
         self.assertEqual(capture["capture_root"], "..")
         self.assertEqual(capture["calib"], "calibration.json")
 
+    def test_source_fingerprints_change_when_video_is_replaced(self):
+        with tempfile.TemporaryDirectory() as directory:
+            root = Path(directory)
+            source = root / "0.mp4"
+            output = root / "cam_00.mp4"
+            source.write_bytes(b"old")
+            jobs = [(0, "cam_00", source, output)]
+            original = MODULE.fingerprint_sources(jobs)
+
+            source.write_bytes(b"replacement")
+            replacement = MODULE.fingerprint_sources(jobs)
+
+            self.assertNotEqual(original, replacement)
+            self.assertEqual(replacement[0]["size_bytes"], len(b"replacement"))
+
     def test_resume_manifest_rejects_changed_encode_settings(self):
         with tempfile.TemporaryDirectory() as directory:
             path = Path(directory) / "conformance.json"
             expected = MODULE.build_resume_signature(
-                Path("/source"), 0.0, 5.0, 25, 0.46
+                Path("/source"), 0.0, 5.0, 25, 0.46, []
             )
             path.write_text(json.dumps(expected))
 
@@ -143,12 +158,20 @@ class SjtuCalibrationTest(unittest.TestCase):
             changed = {**expected, "start_seconds": 1.0}
             with self.assertRaises(RuntimeError):
                 MODULE.validate_resume_manifest(path, changed, True, False)
+            changed_source = {
+                **expected,
+                "source_fingerprints": [{"camera": "cam_00", "size_bytes": 2}],
+            }
+            with self.assertRaises(RuntimeError):
+                MODULE.validate_resume_manifest(
+                    path, changed_source, True, False
+                )
 
     def test_resume_manifest_is_required_for_existing_outputs(self):
         with tempfile.TemporaryDirectory() as directory:
             path = Path(directory) / "conformance.json"
             expected = MODULE.build_resume_signature(
-                Path("/source"), 0.0, None, 25, 0.46
+                Path("/source"), 0.0, None, 25, 0.46, []
             )
             with self.assertRaises(RuntimeError):
                 MODULE.validate_resume_manifest(path, expected, True, False)

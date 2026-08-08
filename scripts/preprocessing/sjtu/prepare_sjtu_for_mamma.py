@@ -188,6 +188,7 @@ def build_resume_signature(
     duration_seconds: float | None,
     fps: int,
     adjacent_spacing_metres: float,
+    source_fingerprints: list[dict],
 ) -> dict:
     return {
         "source": str(dataset_root.resolve()),
@@ -195,7 +196,23 @@ def build_resume_signature(
         "duration_seconds": duration_seconds,
         "fps": fps,
         "adjacent_spacing_metres": adjacent_spacing_metres,
+        "source_fingerprints": source_fingerprints,
     }
+
+
+def fingerprint_sources(
+    video_jobs: list[tuple[int, str, Path, Path]],
+) -> list[dict]:
+    fingerprints = []
+    for camera_id, camera_name, source, _ in video_jobs:
+        stat = source.stat()
+        fingerprints.append({
+            "camera": camera_name,
+            "source_camera_id": camera_id,
+            "size_bytes": stat.st_size,
+            "mtime_ns": stat.st_mtime_ns,
+        })
+    return fingerprints
 
 
 def validate_resume_manifest(
@@ -289,6 +306,7 @@ def main() -> None:
         args.duration,
         args.fps,
         args.adjacent_spacing_metres,
+        fingerprint_sources(video_jobs),
     )
     try:
         completed_cameras = validate_resume_manifest(
