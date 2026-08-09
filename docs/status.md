@@ -196,3 +196,28 @@ camera 05 remained an isolated high-error view for the second body.
 - Next action: rerun this frame-0 check into the repository's gitignored `tmp/`
   directory after renderer changes, add middle/end frame checks for framing and
   synchronization, and only then render a full share video.
+
+## 2026-08-08 - Depthkit Xuelong calibration and four-view reconstruction
+
+- Converted the 10-camera Xuelong `dkproject.json` using the validated Scatter
+  convention: conjugate the stored depth-camera-to-world pose with
+  `H = diag(1, 1, -1, 1)`, then compose the inverse of the stored
+  depth-to-color extrinsic before producing OpenCV world-to-camera matrices.
+- The initial calibration interpretation produced roughly 85 px median
+  multi-view disagreement across the first four cameras. Matched RGB evidence
+  fell to 4.29 px median after the handedness and color-extrinsic correction.
+- The first-four-camera full runs completed 827 frames for recording `..._02_...`
+  and 1,203 frames for `..._06_...`; saved SMPL-X vertices and joints were
+  finite. The corresponding 30-frame validation errors were `22, 7, 11, 15 px`
+  and `10, 5, 6, 14 px` by camera.
+- The 10-view aggregate calibration check was usable but less uniform: median
+  camera disagreements were approximately `6.40, 4.14, 4.41, 6.41, 6.07,
+  6.56, 9.86, 6.29, 4.66, 7.02 px`. Camera 07 was the clearest outlier, so the
+  tested full baseline remains cameras 01-04 rather than treating all views as
+  equally informative.
+- The current MAMMA optimization path does not consume the retained OpenCV
+  distortion coefficients. A stronger follow-up is to undistort the RGB
+  footage and update intrinsics before repeating controlled camera-count
+  comparisons.
+- Source footage, conformed captures, reconstructions, and rendered media
+  remain local generated artifacts and are not committed.

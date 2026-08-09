@@ -103,6 +103,10 @@ Calibration conventions are important:
 
 MAMMA loads an existing calibration but does not estimate a new camera rig. Calibrate externally (for example with a checkerboard or ChArUco workflow), solve all camera extrinsics in one shared coordinate system, and inspect multi-view reprojections before running the reconstruction pipeline.
 
+For a calibrated Depthkit/Scatter project, use the conversion and validation
+workflow in [`depthkit.md`](depthkit.md) instead of transcribing
+`dkproject.json` by hand.
+
 ---
 
 ## 3. Mint a capture descriptor
@@ -170,5 +174,6 @@ Cameras and the videos-subdir layout are auto-detected from `<footage>/<seq_name
 ## Reference
 
 - Capture JSON + preset schema: [`docs/CONFIGS.md`](CONFIGS.md)
+- Depthkit/Scatter adapter and calibration convention: [`docs/depthkit.md`](depthkit.md)
 - Pipeline step → builder mapping: [`docs/steps.md`](steps.md)
 - What each step produces: [README → Pipeline](../README.md#pipeline)

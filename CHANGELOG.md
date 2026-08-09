@@ -16,8 +16,13 @@ machine-local progress belong in [`docs/status.md`](docs/status.md).
 - A dated research log in `docs/status.md`.
 - Local operations, Rerun viewer, and SJTU sports runbooks.
 - A reusable SJTU sports calibration and footage adapter.
+- A validated Depthkit/Scatter calibration and RGB adapter with four-view
+  quick/full experiment presets.
 - A share-video renderer with upright, Rerun-style presentation and a
   synchronized camera filmstrip.
+- Depthkit-aware share rendering with Y-down world conversion, optional
+  opposite-side 3D views, and landmark-based suppression of unconstrained
+  entrance and exit meshes.
 - Camera-count ablation captures and helper commands.
 - A quantitative MammaEval 4/6/8-view research entry with camera-quality and
   ground-truth provenance caveats.

@@ -118,8 +118,16 @@ with the camera filmstrip:
 `--start-frame` selects a local mesh frame at which to begin rendering; it does
 not replace the source offset. The source video seek is the sum of both values.
 
-The share renderer converts SJTU X-up vertices to a conventional Y-up display
-space. Do not apply a second rotation to already-converted vertices.
+The share renderer converts its configured world-up axis to a conventional
+right-handed Y-up display space. SJTU is X-up, which is the default. For the
+validated Depthkit conversion use `--up-axis=-y`; do not apply a second
+rotation to already-converted vertices.
+
+Use `--azimuth-degrees` to orbit the virtual camera around the reconstruction.
+Add `--secondary-azimuth-degrees` to place the opposite perspective beside it
+in the main panel. When `--ma-2d-dir` points to the sequence's landmark NPZs,
+the renderer preserves the full timeline and filmstrip but hides meshes on
+frames constrained by fewer than `--min-visible-cameras` selected views.
 
 Validate a deliverable before sharing:
 

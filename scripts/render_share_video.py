@@ -3,8 +3,8 @@
 
 The main panel is an upright, stabilized virtual-camera render of the SMPL-X
 reconstruction. Synchronized source views are letterboxed into a filmstrip at
-the bottom. SJTU world coordinates are X-up and are converted to a conventional
-Y-up display coordinate system before rendering.
+the bottom. The selected world-up convention is converted to a conventional
+right-handed Y-up display coordinate system before rendering.
 """
 
 from __future__ import annotations
@@ -30,6 +30,7 @@ STRIP_H = 216
 MAIN_H = CANVAS_H - STRIP_H
 PERSON_COLORS = ((255, 91, 82), (70, 211, 255), (119, 231, 160))
 DEFAULT_FACES = Path(__file__).resolve().parents[1] / "visualization/assets/smplx_faces.npy"
+DEFAULT_AZIMUTH_DEGREES = math.degrees(math.atan2(0.48, 1.0))
 
 
 def positive_finite_float(value: str) -> float:
@@ -45,6 +46,14 @@ def positive_finite_float(value: str) -> float:
 def parse_args() -> argparse.Namespace:
     parser = argparse.ArgumentParser(description=__doc__)
     parser.add_argument("--ma-3d-dir", required=True, type=Path)
+    parser.add_argument(
+        "--ma-2d-dir",
+        type=Path,
+        help=(
+            "Optional sequence directory containing per-camera landmark NPZs. "
+            "Meshes are hidden when too few selected cameras have useful visibility."
+        ),
+    )
     parser.add_argument("--videos-dir", required=True, type=Path)
     parser.add_argument("--faces", type=Path, default=DEFAULT_FACES)
     parser.add_argument("--cams", nargs="+", required=True)
@@ -62,13 +71,46 @@ def parse_args() -> argparse.Namespace:
             "Set this to the pipeline's global.start_frame for sliced runs."
         ),
     )
+    parser.add_argument(
+        "--up-axis",
+        choices=("x", "y", "-y", "z", "-z"),
+        default="x",
+        help="World up axis before conversion to right-handed Y-up display space.",
+    )
+    parser.add_argument(
+        "--azimuth-degrees",
+        type=float,
+        default=DEFAULT_AZIMUTH_DEGREES,
+        help="Primary virtual-camera azimuth around the reconstruction.",
+    )
+    parser.add_argument(
+        "--secondary-azimuth-degrees",
+        type=float,
+        default=None,
+        help="Optional second 3D perspective displayed beside the primary view.",
+    )
+    parser.add_argument("--min-visible-cameras", type=int, default=2)
+    parser.add_argument("--mean-visibility-threshold", type=float, default=0.05)
     return parser.parse_args()
 
 
-def world_to_display(vertices: np.ndarray) -> np.ndarray:
-    """Convert SJTU X-up world coordinates to right-handed Y-up display space."""
-    # display X <- world Z, display Y <- world X, display Z <- world Y
-    return vertices[..., [2, 0, 1]].astype(np.float32, copy=False)
+def world_to_display(vertices: np.ndarray, up_axis: str) -> np.ndarray:
+    """Convert a documented world-up convention to right-handed Y-up space."""
+    if up_axis == "x":
+        # display X <- world Z, display Y <- world X, display Z <- world Y
+        result = vertices[..., [2, 0, 1]]
+    elif up_axis == "y":
+        result = vertices
+    elif up_axis == "-y":
+        # Rotate 180 degrees around X rather than reflecting Y.
+        result = vertices * np.array([1.0, -1.0, -1.0])
+    elif up_axis == "z":
+        result = vertices[..., [0, 2, 1]] * np.array([1.0, 1.0, -1.0])
+    elif up_axis == "-z":
+        result = vertices[..., [0, 2, 1]] * np.array([1.0, -1.0, 1.0])
+    else:  # pragma: no cover - argparse prevents this
+        raise ValueError(f"Unsupported up axis: {up_axis}")
+    return result.astype(np.float32, copy=False)
 
 
 def moving_average(values: np.ndarray, radius: int = 18) -> np.ndarray:
@@ -85,18 +127,61 @@ def moving_average(values: np.ndarray, radius: int = 18) -> np.ndarray:
     ).astype(np.float32)
 
 
-def load_motions(ma_3d_dir: Path) -> list[np.ndarray]:
+def load_motions(ma_3d_dir: Path, up_axis: str) -> list[np.ndarray]:
     files = sorted(ma_3d_dir.glob("verts_joints_body_id-*.npz"))
     if not files:
         raise FileNotFoundError(f"No reconstructed bodies found under {ma_3d_dir}")
     motions = []
     for path in files:
         with np.load(path) as data:
-            motions.append(world_to_display(data["pred_vertices"]))
+            motions.append(world_to_display(data["pred_vertices"], up_axis))
     frame_counts = {len(motion) for motion in motions}
     if len(frame_counts) != 1:
         raise ValueError(f"Body frame counts disagree: {sorted(frame_counts)}")
     return motions
+
+
+def landmark_active_frames(
+    ma_2d_dir: Path | None,
+    cameras: list[str],
+    frame_count: int,
+    min_visible_cameras: int,
+    mean_visibility_threshold: float,
+) -> np.ndarray:
+    if ma_2d_dir is None:
+        return np.ones(frame_count, dtype=bool)
+    if min_visible_cameras <= 0:
+        raise ValueError("--min-visible-cameras must be positive")
+    if not 0.0 <= mean_visibility_threshold <= 1.0:
+        raise ValueError("--mean-visibility-threshold must be between 0 and 1")
+
+    camera_scores = []
+    for camera in cameras:
+        path = ma_2d_dir / f"{camera}.npz"
+        if not path.is_file():
+            raise FileNotFoundError(f"Missing landmark file: {path}")
+        with np.load(path) as data:
+            visibility = np.asarray(data["visibilities"])
+        if len(visibility) < frame_count:
+            raise ValueError(
+                f"{path} has {len(visibility)} visibility frames; "
+                f"the reconstruction has {frame_count}"
+            )
+        axes = tuple(range(1, visibility.ndim))
+        score = (
+            visibility[:frame_count].mean(axis=axes)
+            if axes
+            else visibility[:frame_count]
+        )
+        camera_scores.append(score)
+    stacked = np.stack(camera_scores, axis=1)
+    active = (
+        (stacked > mean_visibility_threshold).sum(axis=1)
+        >= min_visible_cameras
+    )
+    if not active.any():
+        raise ValueError("Landmark visibility rejected every reconstruction frame")
+    return active
 
 
 def look_at_pose(eye: np.ndarray, target: np.ndarray) -> np.ndarray:
@@ -151,6 +236,8 @@ def add_ground(
 
 def frame_geometry(
     motions: list[np.ndarray],
+    active_frames: np.ndarray,
+    main_aspect: float,
 ) -> tuple[np.ndarray, float, float, float, float]:
     n_frames = len(motions[0])
     centers = np.empty((n_frames, 3), dtype=np.float32)
@@ -160,18 +247,27 @@ def frame_geometry(
         maxs = np.max([motion[frame].max(axis=0) for motion in motions], axis=0)
         centers[frame] = (mins + maxs) / 2
         spans[frame] = maxs - mins
+    active_indices = np.flatnonzero(active_frames)
+    all_indices = np.arange(n_frames)
+    for axis in range(3):
+        centers[:, axis] = np.interp(
+            all_indices, active_indices, centers[active_indices, axis]
+        )
     centers = moving_average(centers)
     floor_y = float(
         np.percentile(
-            np.concatenate([motion[:, :, 1].min(axis=1) for motion in motions]),
+            np.concatenate(
+                [motion[active_frames, :, 1].min(axis=1) for motion in motions]
+            ),
             5,
         )
     )
     camera_distance = max(
         6.0,
-        float(np.percentile(spans[:, 1], 99)) / (2 * np.tan(np.deg2rad(21))),
-        float(np.percentile(spans[:, 0], 99))
-        / (2 * np.tan(np.deg2rad(21)) * (CANVAS_W / MAIN_H)),
+        float(np.percentile(spans[active_frames, 1], 99))
+        / (2 * np.tan(np.deg2rad(21))),
+        float(np.percentile(spans[active_frames, 0], 99))
+        / (2 * np.tan(np.deg2rad(21)) * main_aspect),
     ) * 1.28
     ground_span = max(
         12.0,
@@ -181,9 +277,9 @@ def frame_geometry(
     ground_span_per_frame = np.linalg.norm(spans[:, [0, 2]], axis=1)
     ortho_ymag = max(
         1.32,
-        float(np.percentile(spans[:, 1], 99)) * 0.64,
-        float(np.percentile(ground_span_per_frame, 99))
-        / (2 * (CANVAS_W / MAIN_H))
+        float(np.percentile(spans[active_frames, 1], 99)) * 0.64,
+        float(np.percentile(ground_span_per_frame[active_frames], 99))
+        / (2 * main_aspect)
         * 1.20,
     )
     return centers, floor_y, camera_distance, ground_span, ortho_ymag
@@ -263,7 +359,13 @@ def label(
 
 def main() -> int:
     args = parse_args()
-    motions = load_motions(args.ma_3d_dir)
+    if not math.isfinite(args.azimuth_degrees):
+        raise ValueError("--azimuth-degrees must be finite")
+    if args.secondary_azimuth_degrees is not None and not math.isfinite(
+        args.secondary_azimuth_degrees
+    ):
+        raise ValueError("--secondary-azimuth-degrees must be finite")
+    motions = load_motions(args.ma_3d_dir, args.up_axis)
     faces = np.load(args.faces).astype(np.int32)
     total_frames = len(motions[0])
     start = max(0, args.start_frame)
@@ -275,9 +377,23 @@ def main() -> int:
     if start >= end:
         raise ValueError(f"Empty frame range: {start}:{end} of {total_frames}")
 
+    active_frames = landmark_active_frames(
+        args.ma_2d_dir,
+        args.cams,
+        total_frames,
+        args.min_visible_cameras,
+        args.mean_visibility_threshold,
+    )
     selected_motions = [motion[start:end] for motion in motions]
+    selected_active_frames = active_frames[start:end]
+    if not selected_active_frames.any():
+        raise ValueError("The requested render interval has no active reconstruction frames")
+    azimuths = [args.azimuth_degrees]
+    if args.secondary_azimuth_degrees is not None:
+        azimuths.append(args.secondary_azimuth_degrees)
+    panel_width = CANVAS_W // len(azimuths)
     centers, floor_y, camera_distance, ground_span, ortho_ymag = frame_geometry(
-        selected_motions
+        selected_motions, selected_active_frames, panel_width / MAIN_H
     )
     world_center = np.median(centers, axis=0)
     scene = pyrender.Scene(
@@ -285,7 +401,7 @@ def main() -> int:
     )
     add_ground(scene, world_center, floor_y, ground_span)
     camera = pyrender.OrthographicCamera(
-        xmag=ortho_ymag * (CANVAS_W / MAIN_H), ymag=ortho_ymag
+        xmag=ortho_ymag * (panel_width / MAIN_H), ymag=ortho_ymag
     )
     camera_node = scene.add(camera, pose=np.eye(4))
     light = pyrender.DirectionalLight(color=np.ones(3), intensity=3.2)
@@ -309,7 +425,7 @@ def main() -> int:
         )
         for index, motion in enumerate(motions)
     ]
-    renderer = pyrender.OffscreenRenderer(CANVAS_W, MAIN_H)
+    renderer = pyrender.OffscreenRenderer(panel_width, MAIN_H)
 
     captures = []
     reference_fps = None
@@ -356,37 +472,71 @@ def main() -> int:
     try:
         try:
             slot_w = CANVAS_W // len(captures)
+            body_nodes_attached = [True] * len(body_nodes)
             for frame_number in range(start, end):
                 local_frame = frame_number - start
                 target = centers[local_frame].copy()
                 target[1] = max(target[1], floor_y + 0.9)
-                eye = target + np.array(
-                    [camera_distance * 0.48, camera_distance * 0.18, camera_distance],
-                    dtype=np.float32,
-                )
-                pose = look_at_pose(eye, target)
-                scene.set_pose(camera_node, pose)
-                scene.set_pose(light_node, pose)
-
                 for body_index, node in enumerate(body_nodes):
-                    mesh = trimesh.Trimesh(
-                        motions[body_index][frame_number], faces, process=False
-                    )
-                    node.mesh = pyrender.Mesh.from_trimesh(
-                        mesh,
-                        material=material(
-                            PERSON_COLORS[body_index % len(PERSON_COLORS)]
-                        ),
-                        smooth=True,
-                    )
+                    if active_frames[frame_number]:
+                        if not body_nodes_attached[body_index]:
+                            scene.add_node(node)
+                            body_nodes_attached[body_index] = True
+                        mesh = trimesh.Trimesh(
+                            motions[body_index][frame_number], faces, process=False
+                        )
+                        node.mesh = pyrender.Mesh.from_trimesh(
+                            mesh,
+                            material=material(
+                                PERSON_COLORS[body_index % len(PERSON_COLORS)]
+                            ),
+                            smooth=True,
+                        )
+                    elif body_nodes_attached[body_index]:
+                        scene.remove_node(node)
+                        body_nodes_attached[body_index] = False
 
-                rgb, _ = renderer.render(
-                    scene,
-                    flags=pyrender.RenderFlags.RGBA
-                    | pyrender.RenderFlags.SHADOWS_DIRECTIONAL,
-                )
+                world_panels = []
+                for azimuth_degrees in azimuths:
+                    azimuth = math.radians(azimuth_degrees)
+                    horizontal = camera_distance * math.hypot(0.48, 1.0)
+                    eye = target + np.array(
+                        [
+                            horizontal * math.sin(azimuth),
+                            camera_distance * 0.18,
+                            horizontal * math.cos(azimuth),
+                        ],
+                        dtype=np.float32,
+                    )
+                    pose = look_at_pose(eye, target)
+                    scene.set_pose(camera_node, pose)
+                    scene.set_pose(light_node, pose)
+                    rgb, _ = renderer.render(
+                        scene,
+                        flags=pyrender.RenderFlags.RGBA
+                        | pyrender.RenderFlags.SHADOWS_DIRECTIONAL,
+                    )
+                    world_panels.append(
+                        cv2.cvtColor(rgb[:, :, :3], cv2.COLOR_RGB2BGR)
+                    )
                 canvas = np.full((CANVAS_H, CANVAS_W, 3), 16, dtype=np.uint8)
-                canvas[:MAIN_H] = cv2.cvtColor(rgb[:, :, :3], cv2.COLOR_RGB2BGR)
+                canvas[:MAIN_H] = np.concatenate(world_panels, axis=1)
+                if len(world_panels) == 2:
+                    cv2.line(
+                        canvas,
+                        (panel_width, 62),
+                        (panel_width, MAIN_H),
+                        (68, 68, 72),
+                        1,
+                    )
+                    for panel_index, azimuth_degrees in enumerate(azimuths):
+                        label(
+                            canvas,
+                            f"3D VIEW {azimuth_degrees:g} deg",
+                            (panel_index * panel_width + 18, 92),
+                            0.52,
+                            (190, 199, 207),
+                        )
                 cv2.rectangle(
                     canvas, (0, MAIN_H), (CANVAS_W, CANVAS_H), (12, 12, 14), -1
                 )
