@@ -562,7 +562,7 @@ def process_seq(
 
     # --- Collage video ---
     if not skip_collage:
-        _generate_collage(seq_out_path)
+        _generate_collage(seq_out_path, fps=_collage_fps(assignment_config))
 
 
 def _resolve_expected_subjects(assignment_config, override, loaded_cache, pipeline):
@@ -593,14 +593,24 @@ def _resolve_expected_subjects(assignment_config, override, loaded_cache, pipeli
     return None
 
 
-def _generate_collage(seq_out_path):
+def _collage_fps(assignment_config):
+    if not isinstance(assignment_config, dict):
+        return 30.0
+    return float(
+        assignment_config.get("exports", {}).get("masked_outputs_fps", 30.0)
+    )
+
+
+def _generate_collage(seq_out_path, fps=30.0):
     """Generate collage video from mask outputs."""
     try:
         from utils.post_video_from_imgs import find_cameras, process_collage_body
         seq_dir = Path(seq_out_path)
         cameras = find_cameras(seq_dir)
         if cameras:
-            process_collage_body(seq_dir, seq_dir.name, cameras, 30, 256, 0, 0, True)
+            process_collage_body(
+                seq_dir, seq_dir.name, cameras, fps, 256, 0, 0, True
+            )
         else:
             _log("WARN", f"No camera folders found for collage in '{seq_dir.name}'.")
     except Exception as exc:

@@ -203,6 +203,15 @@ class RerunSceneLogger:
         self, *, floor_height: float = 0.0, size: float = 10.0, up_axis: int = 2
     ) -> None:
         rr = self._rr
+        # Tell Rerun how the source world is oriented. Without this metadata
+        # the viewer assumes Z-up even when the dataset and ground calculation
+        # use X- or Y-up, which makes valid reconstructions appear sideways.
+        world_coordinates = {
+            0: rr.ViewCoordinates.RIGHT_HAND_X_UP,
+            1: rr.ViewCoordinates.RIGHT_HAND_Y_UP,
+            2: rr.ViewCoordinates.RIGHT_HAND_Z_UP,
+        }
+        rr.log("world", world_coordinates[up_axis], static=True)
         plane = [a for a in (0, 1, 2) if a != up_axis]
         a0, a1 = plane
         corners = [(-size, size), (size, size), (-size, -size), (size, -size)]

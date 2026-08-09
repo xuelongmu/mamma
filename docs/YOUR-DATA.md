@@ -42,6 +42,26 @@ data/<your-dataset>/
 
 Camera names (`cam_01`, etc.) are yours to choose — they just have to match the names you list in the calibration and capture descriptor below.
 
+### Recording and synchronization requirements
+
+- The video reader discovers `.mp4` files by filename. H.264 and H.265 are both suitable when the installed OpenCV/FFmpeg build can decode them; constant-frame-rate video is strongly recommended.
+- Frame `N` must represent the same instant in every camera. The capture stage does **not** align timestamps or estimate temporal offsets; it only limits the sequence to the shortest input stream.
+- Prefer hardware synchronization. For unsynchronized consumer cameras, record a flash, LED pulse, or clap visible in every view, then trim/re-encode the videos so that event occurs on the same frame.
+- Keep each camera fixed after calibration. Disable digital stabilization and avoid changing zoom, focal length, resolution, or orientation between calibration and capture.
+- Each video's dimensions must match the `resolution` and intrinsics recorded for that camera. Different cameras may have different calibrated resolutions, but they must share a frame rate and timeline.
+- Arrange cameras around the subject with substantial overlapping coverage. Four cameras can work, but views distributed around the capture volume are preferable to cameras clustered along one side.
+
+At 30 fps, a one-frame synchronization error is about 33 ms and can create large multi-view inconsistencies during fast motion.
+
+### Released four-iPhone example
+
+The released iPhone captures are a useful reference for consumer-camera input. They use four cameras named `A001` through `D001`, 3840x2160 footage at 30 fps, and a `videos/<camera>.mp4` layout. The cameras surround the action at roughly chest height with overlapping front, side, and rear coverage.
+
+Use [`data/download_mamma_iphone.sh`](../data/download_mamma_iphone.sh) to download metadata, predictions, full-quality H.265 videos, lighter H.265 videos, or preview grids. The matching capture and calibration descriptors are:
+
+- [`configs/examples/captures/iphones_indoors.json`](../configs/examples/captures/iphones_indoors.json) and [`configs/examples/calib/iphones_indoors.yaml`](../configs/examples/calib/iphones_indoors.yaml)
+- [`configs/examples/captures/iphones_outdoors.json`](../configs/examples/captures/iphones_outdoors.json) and [`configs/examples/calib/iphones_outdoors.yaml`](../configs/examples/calib/iphones_outdoors.yaml)
+
 ---
 
 ## 2. Author the calibration file
@@ -62,7 +82,7 @@ cameras:
     camera_model: pinhole
     distortion_model: radtan         # or vicon_radial_2 for Vicon exports
     intrinsics: [fx, fy, cx, cy]
-    distortion_coeffs: [k1, k2, p1, p2, k3]
+    distortion_coeffs: [k1, k2, p1, p2]
     resolution: [width, height]
     translation: [tx, ty, tz]                  # in metres
     rotation_quaternion: [w, x, y, z]          # Hamilton convention
@@ -71,6 +91,17 @@ cameras:
 ```
 
 The keys under `cameras:` must match the camera names you use in your footage filenames (or image-dir names) and in the capture descriptor below.
+
+For YAML, `radtan` requires exactly four Brown-Conrady coefficients (`k1`, `k2`, `p1`, `p2`). The OpenCV JSON loader accepts the five-coefficient form that also includes `k3`.
+
+Calibration conventions are important:
+
+- `translation` is the camera position in the shared world frame, in metres.
+- `rotation_quaternion` is the camera orientation in the world (`T_world_cam`), using Hamilton `[w, x, y, z]` order and unit norm.
+- Camera coordinates use the OpenCV convention: +X right, +Y down, +Z forward.
+- Intrinsics are expressed in pixels and must correspond to the recorded resolution.
+
+MAMMA loads an existing calibration but does not estimate a new camera rig. Calibrate externally (for example with a checkerboard or ChArUco workflow), solve all camera extrinsics in one shared coordinate system, and inspect multi-view reprojections before running the reconstruction pipeline.
 
 ---
 

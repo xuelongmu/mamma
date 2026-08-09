@@ -1,0 +1,343 @@
+import importlib.util
+import argparse
+import json
+import subprocess
+import tempfile
+import unittest
+from pathlib import Path
+from unittest import mock
+
+
+MODULE_PATH = Path(__file__).parents[1] / "prepare_sjtu_for_mamma.py"
+SPEC = importlib.util.spec_from_file_location("prepare_sjtu_for_mamma", MODULE_PATH)
+MODULE = importlib.util.module_from_spec(SPEC)
+assert SPEC.loader is not None
+SPEC.loader.exec_module(MODULE)
+
+
+class SjtuCalibrationTest(unittest.TestCase):
+    def test_fps_must_be_a_positive_integer(self):
+        self.assertEqual(MODULE.positive_integer("25"), 25)
+        with self.assertRaises(argparse.ArgumentTypeError):
+            MODULE.positive_integer("29.97")
+        with self.assertRaises(argparse.ArgumentTypeError):
+            MODULE.positive_integer("0")
+
+    def test_physical_spacing_must_be_finite_and_positive(self):
+        self.assertEqual(MODULE.positive_finite_float("0.46"), 0.46)
+        for value in ("0", "-1", "nan", "inf"):
+            with self.subTest(value=value):
+                with self.assertRaises(argparse.ArgumentTypeError):
+                    MODULE.positive_finite_float(value)
+
+    def test_start_time_must_be_finite_and_nonnegative(self):
+        self.assertEqual(MODULE.nonnegative_finite_float("0"), 0.0)
+        self.assertEqual(MODULE.nonnegative_finite_float("1.5"), 1.5)
+        for value in ("-1", "nan", "inf"):
+            with self.subTest(value=value):
+                with self.assertRaises(argparse.ArgumentTypeError):
+                    MODULE.nonnegative_finite_float(value)
+
+    def test_session_must_be_a_single_path_component(self):
+        self.assertEqual(MODULE.single_path_component("badminton_take"), "badminton_take")
+        for value in ("", ".", "..", "sports/take", "sports\\take"):
+            with self.subTest(value=value):
+                with self.assertRaises(argparse.ArgumentTypeError):
+                    MODULE.single_path_component(value)
+
+    def test_camera_ids_must_be_unique(self):
+        MODULE.validate_unique_camera_ids([0, 2, 5])
+        with self.assertRaisesRegex(ValueError, "duplicates"):
+            MODULE.validate_unique_camera_ids([0, 2, 0])
+
+    def test_parses_five_line_camera_blocks(self):
+        content = "\n".join([
+            "camera 3",
+            "size 1920 1080",
+            "intrinsic 1000 1001 960 540",
+            "rotation 1 0 0 0 1 0 0 0 1",
+            "center 1 2 3",
+        ])
+        with tempfile.TemporaryDirectory() as directory:
+            path = Path(directory) / "paras.txt"
+            path.write_text(content)
+            cameras = MODULE.parse_calibration(path)
+
+        self.assertEqual([cameras[3]["width"], cameras[3]["height"]], [1920, 1080])
+        self.assertEqual(cameras[3]["intrinsic"][0], [1000.0, 0.0, 960.0])
+
+    def test_rejects_nonfinite_calibration_values(self):
+        content = "\n".join([
+            "camera 3",
+            "size 1920 1080",
+            "intrinsic nan 1001 960 540",
+            "rotation 1 0 0 0 1 0 0 0 1",
+            "center 1 2 3",
+        ])
+        with tempfile.TemporaryDirectory() as directory:
+            path = Path(directory) / "paras.txt"
+            path.write_text(content)
+            with self.assertRaisesRegex(ValueError, "Non-finite"):
+                MODULE.parse_calibration(path)
+
+    def test_rejects_nonpositive_calibration_dimensions(self):
+        content = "\n".join([
+            "camera 3",
+            "size 0 1080",
+            "intrinsic 1000 1001 960 540",
+            "rotation 1 0 0 0 1 0 0 0 1",
+            "center 1 2 3",
+        ])
+        with tempfile.TemporaryDirectory() as directory:
+            path = Path(directory) / "paras.txt"
+            path.write_text(content)
+            with self.assertRaisesRegex(ValueError, "Nonpositive image size"):
+                MODULE.parse_calibration(path)
+
+    def test_rejects_nonrigid_calibration_rotations(self):
+        with self.assertRaisesRegex(ValueError, "Non-orthonormal"):
+            MODULE.validate_rotation_matrix(
+                [[2.0, 0.0, 0.0], [0.0, 1.0, 0.0], [0.0, 0.0, 1.0]],
+                3,
+            )
+
+    def test_rejects_nonpositive_focal_lengths(self):
+        content = "\n".join([
+            "camera 3",
+            "size 1920 1080",
+            "intrinsic 0 1001 960 540",
+            "rotation 1 0 0 0 1 0 0 0 1",
+            "center 1 2 3",
+        ])
+        with tempfile.TemporaryDirectory() as directory:
+            path = Path(directory) / "paras.txt"
+            path.write_text(content)
+            with self.assertRaisesRegex(ValueError, "Nonpositive focal length"):
+                MODULE.parse_calibration(path)
+
+    def test_rejects_duplicate_calibration_camera_ids(self):
+        block = [
+            "camera 3",
+            "size 1920 1080",
+            "intrinsic 1000 1001 960 540",
+            "rotation 1 0 0 0 1 0 0 0 1",
+            "center 1 2 3",
+        ]
+        with tempfile.TemporaryDirectory() as directory:
+            path = Path(directory) / "paras.txt"
+            path.write_text("\n".join([*block, *block]))
+            with self.assertRaisesRegex(ValueError, "Duplicate calibration"):
+                MODULE.parse_calibration(path)
+        with self.assertRaisesRegex(ValueError, "Improper rotation"):
+            MODULE.validate_rotation_matrix(
+                [[-1.0, 0.0, 0.0], [0.0, 1.0, 0.0], [0.0, 0.0, 1.0]],
+                3,
+            )
+
+    def test_metric_extrinsic_uses_negative_rotated_camera_center(self):
+        camera = {
+            "width": 10,
+            "height": 20,
+            "intrinsic": [[1.0, 0.0, 2.0], [0.0, 1.0, 3.0], [0.0, 0.0, 1.0]],
+            "rotation": [[0.0, -1.0, 0.0], [1.0, 0.0, 0.0], [0.0, 0.0, 1.0]],
+            "center_units": [1.0, 2.0, 3.0],
+        }
+        calibration = MODULE.metric_calibration(camera, 0.5)
+        self.assertEqual(calibration["extrinsics_matrix"], [
+            [0.0, -1.0, 0.0, 1.0],
+            [1.0, 0.0, 0.0, -0.5],
+            [0.0, 0.0, 1.0, -1.5],
+        ])
+
+    def test_preflight_reports_all_camera_jobs(self):
+        with tempfile.TemporaryDirectory() as directory:
+            root = Path(directory)
+            (root / "RGB").mkdir()
+            videos = root / "conformed"
+            videos.mkdir()
+            for camera_id in (0, 1):
+                (root / "RGB" / f"{camera_id}.mp4").touch()
+            (videos / "cam_01.mp4").touch()
+
+            jobs = MODULE.preflight_video_jobs(root, videos, [0, 1])
+            self.assertEqual([job[1] for job in jobs], ["cam_00", "cam_01"])
+            self.assertFalse((videos / "cam_00.mp4").exists())
+
+    def test_encode_video_atomically_commits_success(self):
+        with tempfile.TemporaryDirectory() as directory:
+            root = Path(directory)
+            source = root / "source.mp4"
+            output = root / "cam_00.mp4"
+            source.touch()
+
+            def successful_run(command, check):
+                self.assertTrue(check)
+                Path(command[-1]).write_bytes(b"complete")
+
+            with mock.patch.object(MODULE.subprocess, "run", successful_run):
+                MODULE.encode_video(source, output, "fps=25")
+
+            self.assertEqual(output.read_bytes(), b"complete")
+            self.assertFalse((root / ".cam_00.partial.mp4").exists())
+
+    def test_encode_video_cleans_failed_temporary_output(self):
+        with tempfile.TemporaryDirectory() as directory:
+            root = Path(directory)
+            source = root / "source.mp4"
+            output = root / "cam_00.mp4"
+            source.touch()
+
+            def failed_run(command, check):
+                Path(command[-1]).write_bytes(b"partial")
+                raise subprocess.CalledProcessError(1, command)
+
+            with mock.patch.object(MODULE.subprocess, "run", failed_run):
+                with self.assertRaises(subprocess.CalledProcessError):
+                    MODULE.encode_video(source, output, "fps=25")
+
+            self.assertFalse(output.exists())
+            self.assertFalse((root / ".cam_00.partial.mp4").exists())
+
+    def test_probes_positive_video_frame_count(self):
+        result = mock.Mock(stdout="628\n")
+        with mock.patch.object(MODULE.subprocess, "run", return_value=result):
+            self.assertEqual(MODULE.probe_video_frame_count(Path("clip.mp4")), 628)
+
+    def test_probes_and_validates_video_dimensions(self):
+        result = mock.Mock(stdout="1920x1080\n")
+        with mock.patch.object(MODULE.subprocess, "run", return_value=result):
+            dimensions = MODULE.probe_video_dimensions(Path("clip.mp4"))
+        self.assertEqual(dimensions, (1920, 1080))
+        MODULE.validate_video_dimensions("cam_00", dimensions, (1920, 1080))
+        with self.assertRaisesRegex(RuntimeError, "do not match calibration"):
+            MODULE.validate_video_dimensions(
+                "cam_00", dimensions, (1280, 720)
+            )
+
+    def test_rejects_empty_or_inconsistent_frame_counts(self):
+        result = mock.Mock(stdout="0\n")
+        with mock.patch.object(MODULE.subprocess, "run", return_value=result):
+            with self.assertRaisesRegex(RuntimeError, "no frames"):
+                MODULE.probe_video_frame_count(Path("clip.mp4"))
+        with self.assertRaisesRegex(RuntimeError, "expected 628"):
+            MODULE.validate_frame_count("cam_00", 627, 628, None)
+        with self.assertRaisesRegex(RuntimeError, "first camera has 628"):
+            MODULE.validate_frame_count("cam_01", 627, None, 628)
+
+    def test_invalidates_published_descriptors_before_encoding(self):
+        with tempfile.TemporaryDirectory() as directory:
+            session = Path(directory)
+            (session / "capture.json").write_text("{}")
+            (session / "calibration.json").write_text("{}")
+
+            MODULE.invalidate_capture_descriptors(session)
+
+            self.assertFalse((session / "capture.json").exists())
+            self.assertFalse((session / "calibration.json").exists())
+
+    def test_capture_descriptor_uses_session_relative_paths(self):
+        capture = MODULE.build_capture_descriptor("take", 25, ["cam_00"])
+        self.assertEqual(capture["capture_root"], "..")
+        self.assertEqual(capture["calib"], "calibration.json")
+
+    def test_source_fingerprints_change_when_video_is_replaced(self):
+        with tempfile.TemporaryDirectory() as directory:
+            root = Path(directory)
+            source = root / "0.mp4"
+            output = root / "cam_00.mp4"
+            source.write_bytes(b"old")
+            jobs = [(0, "cam_00", source, output)]
+            original = MODULE.fingerprint_sources(jobs)
+
+            source.write_bytes(b"replacement")
+            replacement = MODULE.fingerprint_sources(jobs)
+
+            self.assertNotEqual(original, replacement)
+            self.assertEqual(replacement[0]["size_bytes"], len(b"replacement"))
+
+    def test_calibration_fingerprint_changes_with_content(self):
+        with tempfile.TemporaryDirectory() as directory:
+            path = Path(directory) / "paras.txt"
+            path.write_text("first")
+            original = MODULE.sha256_file(path)
+            path.write_text("corrected")
+            self.assertNotEqual(original, MODULE.sha256_file(path))
+
+    def test_resume_manifest_rejects_changed_encode_settings(self):
+        with tempfile.TemporaryDirectory() as directory:
+            path = Path(directory) / "conformance.json"
+            expected = MODULE.build_resume_signature(
+                Path("/source"), 0.0, 5.0, 25, 0.46, "calibration", []
+            )
+            path.write_text(json.dumps(expected))
+
+            completed = MODULE.validate_resume_manifest(path, expected, True, False)
+            self.assertEqual(completed, set())
+            changed = {**expected, "start_seconds": 1.0}
+            with self.assertRaises(RuntimeError):
+                MODULE.validate_resume_manifest(path, changed, True, False)
+            changed_source = {
+                **expected,
+                "source_fingerprints": [{"camera": "cam_00", "size_bytes": 2}],
+            }
+            with self.assertRaises(RuntimeError):
+                MODULE.validate_resume_manifest(
+                    path, changed_source, True, False
+                )
+            changed_calibration = {
+                **expected,
+                "calibration_sha256": "corrected-calibration",
+            }
+            with self.assertRaises(RuntimeError):
+                MODULE.validate_resume_manifest(
+                    path, changed_calibration, True, False
+                )
+
+    def test_resume_manifest_is_required_for_existing_outputs(self):
+        with tempfile.TemporaryDirectory() as directory:
+            path = Path(directory) / "conformance.json"
+            expected = MODULE.build_resume_signature(
+                Path("/source"), 0.0, None, 25, 0.46, "calibration", []
+            )
+            with self.assertRaises(RuntimeError):
+                MODULE.validate_resume_manifest(path, expected, True, False)
+
+    def test_reuse_requires_completion_for_current_manifest(self):
+        with tempfile.TemporaryDirectory() as directory:
+            root = Path(directory)
+            old_complete = root / "cam_00.mp4"
+            stale_from_interrupted_overwrite = root / "cam_01.mp4"
+            old_complete.touch()
+            stale_from_interrupted_overwrite.touch()
+            completed = {"cam_00"}
+
+            self.assertTrue(
+                MODULE.should_reuse_output(
+                    old_complete, "cam_00", completed, overwrite=False
+                )
+            )
+            self.assertFalse(
+                MODULE.should_reuse_output(
+                    stale_from_interrupted_overwrite,
+                    "cam_01",
+                    completed,
+                    overwrite=False,
+                )
+            )
+            jobs = [
+                (0, "cam_00", root / "0.mp4", old_complete),
+                (
+                    1,
+                    "cam_01",
+                    root / "1.mp4",
+                    stale_from_interrupted_overwrite,
+                ),
+            ]
+            self.assertTrue(
+                MODULE.is_reuse_only(jobs, {"cam_00", "cam_01"}, False)
+            )
+            self.assertFalse(MODULE.is_reuse_only(jobs, {"cam_00"}, False))
+
+
+if __name__ == "__main__":
+    unittest.main()
