@@ -81,6 +81,7 @@ the `world` root:
 | --- | --- | --- |
 | X-up | `--up-axis x` | `RIGHT_HAND_X_UP` |
 | Y-up | `--up-axis y` | `RIGHT_HAND_Y_UP` |
+| Y-down | `--up-axis=-y` | `RIGHT_HAND_Y_DOWN` |
 | Z-up | `--up-axis z` | `RIGHT_HAND_Z_UP` |
 
 SJTU sports footage is X-up. Verify that people stand upright and that the

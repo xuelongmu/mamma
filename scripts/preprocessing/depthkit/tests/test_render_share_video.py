@@ -52,10 +52,37 @@ class VisibilityTests(unittest.TestCase):
                 root,
                 list(values),
                 frame_count=3,
+                body_count=1,
                 min_visible_cameras=2,
                 mean_visibility_threshold=0.05,
             )
-            np.testing.assert_array_equal(active, [True, False, True])
+            np.testing.assert_array_equal(active[:, 0], [True, False, True])
+
+    def test_mesh_gate_tracks_each_body_independently(self):
+        with tempfile.TemporaryDirectory() as directory:
+            root = Path(directory)
+            for camera in ("cam_01", "cam_02"):
+                np.savez(
+                    root / f"{camera}.npz",
+                    visibilities=np.asarray(
+                        [
+                            [[1.0, 1.0], [0.0, 0.0]],
+                            [[0.0, 0.0], [1.0, 1.0]],
+                        ]
+                    ),
+                )
+            active = renderer.landmark_active_frames(
+                root,
+                ["cam_01", "cam_02"],
+                frame_count=2,
+                body_count=2,
+                min_visible_cameras=2,
+                mean_visibility_threshold=0.05,
+            )
+            np.testing.assert_array_equal(
+                active,
+                [[True, False], [False, True]],
+            )
 
     def test_mesh_gate_rejects_short_landmark_timeline(self):
         with tempfile.TemporaryDirectory() as directory:
@@ -66,6 +93,7 @@ class VisibilityTests(unittest.TestCase):
                     root,
                     ["cam_01"],
                     frame_count=2,
+                    body_count=1,
                     min_visible_cameras=1,
                     mean_visibility_threshold=0.05,
                 )

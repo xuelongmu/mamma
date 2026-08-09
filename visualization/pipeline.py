@@ -40,7 +40,7 @@ from .rerun_log import RerunSceneLogger, compute_floor_height
 log = logging.getLogger(__name__)
 
 _VENDORED_FACES = Path(__file__).parent / "assets" / "smplx_faces.npy"
-_UP_AXIS_MAP = {"x": 0, "y": 1, "z": 2}
+_UP_AXIS_MAP = {"x": (0, 1), "y": (1, 1), "-y": (1, -1), "z": (2, 1)}
 
 
 def run_visualization(
@@ -82,12 +82,12 @@ def run_visualization(
     ma_3d_dir = Path(ma_3d_dir)
     out_path = Path(out_path)
     if up_axis not in _UP_AXIS_MAP:
-        raise ValueError(f"up_axis must be x/y/z, got {up_axis!r}")
+        raise ValueError(f"up_axis must be x/y/-y/z, got {up_axis!r}")
     if fps <= 0:
         raise ValueError(f"fps must be positive, got {fps}")
     if rerun_display_scale <= 0:
         raise ValueError(f"rerun_display_scale must be positive, got {rerun_display_scale}")
-    up_axis_idx = _UP_AXIS_MAP[up_axis]
+    up_axis_idx, up_axis_sign = _UP_AXIS_MAP[up_axis]
 
     # Camera source: either an in-memory MultiViewCameras (built by
     # cli.py for standalone calibration+videos workflows) or a gt_dir
@@ -145,8 +145,14 @@ def run_visualization(
         image_long_edge=image_long_edge,
     ) as logger:
         logger.log_cameras(cameras)
-        floor = compute_floor_height(motions, up_axis=up_axis_idx)
-        logger.log_ground(floor_height=floor, up_axis=up_axis_idx)
+        floor = compute_floor_height(
+            motions, up_axis=up_axis_idx, up_sign=up_axis_sign
+        )
+        logger.log_ground(
+            floor_height=floor,
+            up_axis=up_axis_idx,
+            up_sign=up_axis_sign,
+        )
         log.info("logged rig + ground (floor=%.4f) in %.2fs", floor, time.perf_counter() - t)
 
         t = time.perf_counter()

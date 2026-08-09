@@ -236,3 +236,17 @@ camera 05 remained an isolated high-error view for the second body.
 - Standalone runs recompute upstream evidence. A controlled 4/6/8-view ablation
   must reuse compatible masks, identities, and 2D landmarks from the largest
   set and vary only the cameras used by the 3D optimizer.
+
+## 2026-08-08 - Depthkit artifact-provenance correction
+
+- The validated four-view full output tag is
+  `xuelong_upright_4v_full_validated` for capture
+  `depthkit_xuelong_10v_upright`.
+- Its generated 3D artifacts are rooted at
+  `output/ma_3d/xuelong_upright_4v_full_validated/depthkit_xuelong_10v_upright/`.
+  The 827-frame and 1,203-frame results are in the
+  `DELL_001_001_02_Xuelong_04_10_16_38_34/` and
+  `DELL_001_001_06_Xuelong_04_10_18_05_51/` children, respectively.
+- Matching 2D evidence is rooted at
+  `output/ma_2d/xuelong_upright_4v_full_validated/depthkit_xuelong_10v_upright/`.
+  These paths are generated local artifacts and remain uncommitted.

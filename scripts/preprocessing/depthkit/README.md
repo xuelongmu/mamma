@@ -30,18 +30,23 @@ micromamba run -n mamma python scripts/preprocessing/depthkit/prepare_depthkit_f
   /path/to/depthkit-project data/my_depthkit_capture
 ```
 
-`--video-mode auto` (the default) symlinks same-rate footage when no rotation
-is needed and re-encodes when its frame rate differs or `--rotate` is
-requested. Use `copy` for a self-contained dataset or `reencode` to force
-H.264/yuv420p constant-frame-rate output. `--rotate ccw`, `cw`, or `180`
+`--video-mode auto` (the default) symlinks only footage whose ffprobe metadata
+reports H.264/yuv420p with matching nominal and average integral frame rates
+when no rotation is needed. It re-encodes all other sources. Use `copy` for a
+self-contained dataset or `reencode` to force H.264/yuv420p
+constant-frame-rate output. Fractional source rates are conformed to the
+nearest integer; an explicit `--fps` must be a positive integer.
+`--rotate ccw`, `cw`, or `180`
 rotates every frame and transforms intrinsics, tangential distortion,
 resolution, and extrinsics so projection geometry remains unchanged. The
 capture metadata is hardware-synchronized; MAMMA still truncates each sequence
 to its shortest camera stream.
 
-When changing only a calibration-convention option after videos have already
-been prepared, pass `--calibration-only --overwrite` to validate and reuse the
-destination videos without re-encoding them.
+Use `--recordings <name> [<name> ...]` to select takes. When changing only a
+calibration-convention option after videos have already been prepared, pass
+`--calibration-only --overwrite` to validate and reuse the destination videos
+without re-encoding them. The requested image rotation must match the existing
+conversion manifest.
 
 Run a quick end-to-end solve:
 

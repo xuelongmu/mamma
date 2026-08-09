@@ -1,6 +1,7 @@
 from __future__ import annotations
 
 import importlib.util
+import json
 import sys
 import tempfile
 import unittest
@@ -15,6 +16,27 @@ converter = importlib.util.module_from_spec(SPEC)
 assert SPEC.loader is not None
 sys.modules[SPEC.name] = converter
 SPEC.loader.exec_module(converter)
+
+
+def camera_stream(
+    source: Path,
+    *,
+    name: str = "cam_01",
+    device_id: str = "device",
+) -> converter.CameraStream:
+    return converter.CameraStream(
+        name=name,
+        sensor_number=1,
+        device_id=device_id,
+        source=source,
+        width=1,
+        height=1,
+        fps=30.0,
+        frame_count=1,
+        calibration={},
+        world_pose={},
+        stream={},
+    )
 
 
 class PoseTests(unittest.TestCase):
@@ -50,6 +72,24 @@ class PoseTests(unittest.TestCase):
         pose = {"rotation": [0, 0, 0], "translation": [0, np.inf, 0]}
         with self.assertRaises(converter.ConversionError):
             converter.pose_matrix(pose)
+
+    def test_coincident_camera_centers_are_rejected(self):
+        pose = {"rotation": [0, 0, 0], "translation": [0, 0, 0]}
+        extrinsics = {"rotation": [0, 0, 0], "translation": [0, 0, 0]}
+        cameras = []
+        for index in (1, 2):
+            camera = camera_stream(Path("unused"), name=f"cam_{index:02d}")
+            cameras.append(
+                converter.CameraStream(
+                    **{
+                        **camera.__dict__,
+                        "calibration": {"extrinsics": extrinsics},
+                        "world_pose": pose,
+                    }
+                )
+            )
+        with self.assertRaisesRegex(converter.ConversionError, "distinct"):
+            converter.camera_look_at_score(cameras, "depth-to-color")
 
 
 class CalibrationTests(unittest.TestCase):
@@ -126,19 +166,7 @@ class PublicationTests(unittest.TestCase):
             destination = root / "destination.mp4"
             source.write_bytes(b"new video")
             destination.write_bytes(b"old video")
-            camera = converter.CameraStream(
-                name="cam_01",
-                sensor_number=1,
-                device_id="device",
-                source=source,
-                width=1,
-                height=1,
-                fps=30.0,
-                frame_count=1,
-                calibration={},
-                world_pose={},
-                stream={},
-            )
+            camera = camera_stream(source)
             action = converter.prepare_video(
                 camera,
                 destination,
@@ -150,6 +178,97 @@ class PublicationTests(unittest.TestCase):
             self.assertEqual(action, "copy")
             self.assertEqual(destination.read_bytes(), b"new video")
             self.assertFalse((root / ".destination.partial.mp4").exists())
+
+    def test_copy_mode_replaces_matching_source_symlink(self):
+        with tempfile.TemporaryDirectory() as directory:
+            root = Path(directory)
+            source = root / "source.mp4"
+            destination = root / "destination.mp4"
+            source.write_bytes(b"video")
+            destination.symlink_to(source)
+            action = converter.prepare_video(
+                camera_stream(source),
+                destination,
+                mode="copy",
+                target_fps=30,
+                overwrite=True,
+                rotation="none",
+            )
+            self.assertEqual(action, "copy")
+            self.assertFalse(destination.is_symlink())
+            self.assertEqual(destination.read_bytes(), b"video")
+
+    def test_symlink_mode_reuses_matching_source_symlink_idempotently(self):
+        with tempfile.TemporaryDirectory() as directory:
+            root = Path(directory)
+            source = root / "source.mp4"
+            destination = root / "destination.mp4"
+            source.write_bytes(b"video")
+            destination.symlink_to(source)
+            action = converter.prepare_video(
+                camera_stream(source),
+                destination,
+                mode="symlink",
+                target_fps=30,
+                overwrite=False,
+                rotation="none",
+            )
+            self.assertEqual(action, "symlink")
+            self.assertTrue(destination.is_symlink())
+
+    def test_auto_symlink_requires_conformant_stream_metadata(self):
+        stream_data = {
+            "streams": [
+                {
+                    "codec_name": "h264",
+                    "pix_fmt": "yuv420p",
+                    "r_frame_rate": "30/1",
+                    "avg_frame_rate": "30/1",
+                }
+            ]
+        }
+        with mock.patch.object(
+            converter.subprocess,
+            "run",
+            return_value=mock.Mock(stdout=json.dumps(stream_data)),
+        ):
+            self.assertTrue(
+                converter.video_is_conformant_for_symlink(Path("video.mp4"), 30)
+            )
+
+        stream_data["streams"][0]["avg_frame_rate"] = "30000/1001"
+        with mock.patch.object(
+            converter.subprocess,
+            "run",
+            return_value=mock.Mock(stdout=json.dumps(stream_data)),
+        ):
+            self.assertFalse(
+                converter.video_is_conformant_for_symlink(Path("video.mp4"), 30)
+            )
+
+    def test_calibration_only_rejects_rotation_change(self):
+        with tempfile.TemporaryDirectory() as directory:
+            output = Path(directory)
+            (output / "conversion_manifest.json").write_text(
+                json.dumps({"rotation": "ccw"}),
+                encoding="utf-8",
+            )
+            converter.validate_calibration_only_manifest(output, "ccw")
+            with self.assertRaisesRegex(converter.ConversionError, "rotation"):
+                converter.validate_calibration_only_manifest(output, "cw")
+
+    def test_overwrite_invalidation_removes_all_published_descriptors(self):
+        with tempfile.TemporaryDirectory() as directory:
+            output = Path(directory)
+            names = (
+                "calibration.json",
+                "capture.json",
+                "conversion_manifest.json",
+            )
+            for name in names:
+                (output / name).write_text("{}", encoding="utf-8")
+            converter.invalidate_capture_descriptors(output)
+            self.assertTrue(all(not (output / name).exists() for name in names))
 
 
 class ArgumentTests(unittest.TestCase):
@@ -163,6 +282,86 @@ class ArgumentTests(unittest.TestCase):
         self.assertEqual(arguments.project, Path("/capture"))
         self.assertIsNone(arguments.output)
         self.assertTrue(arguments.validate_only)
+
+    def test_recording_selection_uses_explicit_option(self):
+        with mock.patch.object(
+            sys,
+            "argv",
+            [
+                "prepare_depthkit_for_mamma.py",
+                "/capture",
+                "--recordings",
+                "take_a",
+                "take_b",
+                "--validate-only",
+            ],
+        ):
+            arguments = converter.parse_args()
+        self.assertIsNone(arguments.output)
+        self.assertEqual(arguments.recordings, ["take_a", "take_b"])
+
+    def test_fractional_output_fps_is_rejected(self):
+        with mock.patch.object(
+            sys,
+            "argv",
+            [
+                "prepare_depthkit_for_mamma.py",
+                "/capture",
+                "--fps",
+                "29.97",
+                "--validate-only",
+            ],
+        ):
+            with self.assertRaises(SystemExit):
+                converter.parse_args()
+
+    def test_validate_only_builds_converted_camera_models(self):
+        arguments = mock.Mock(
+            project=Path("/capture"),
+            output=None,
+            recordings=["take"],
+            fps=30,
+            video_mode="auto",
+            rotate="none",
+            color_extrinsics_direction="depth-to-color",
+            overwrite=False,
+            calibration_only=False,
+            validate_only=True,
+        )
+        cameras = [
+            camera_stream(Path("unused"), name="cam_01", device_id="device_1"),
+            camera_stream(Path("unused"), name="cam_02", device_id="device_2"),
+        ]
+        with (
+            mock.patch.object(converter, "parse_args", return_value=arguments),
+            mock.patch.object(
+                converter,
+                "discover_project_root",
+                return_value=Path("/capture"),
+            ),
+            mock.patch.object(
+                converter,
+                "load_json",
+                return_value={"recordings": {"take": {}}},
+            ),
+            mock.patch.object(
+                converter,
+                "gather_recording",
+                return_value=cameras,
+            ),
+            mock.patch.object(
+                converter,
+                "camera_look_at_score",
+                return_value=1.0,
+            ),
+            mock.patch.object(
+                converter,
+                "mamma_camera",
+                side_effect=converter.ConversionError("invalid camera model"),
+            ),
+        ):
+            with self.assertRaisesRegex(converter.ConversionError, "camera model"):
+                converter.main()
 
 
 if __name__ == "__main__":

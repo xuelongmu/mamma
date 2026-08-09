@@ -70,11 +70,18 @@ micromamba run -n mamma python \
 ```
 
 The adapter writes `calibration.json`, `capture.json`, and an auditable
-`conversion_manifest.json`. With `--video-mode auto`, it links same-rate video
-when no rotation is needed and otherwise re-encodes constant-frame-rate
-H.264/yuv420p footage. Use `copy` for a self-contained capture. If only a
-calibration convention changes after videos are prepared, use
+`conversion_manifest.json`. With `--video-mode auto`, it links a source only
+when ffprobe reports H.264/yuv420p with matching nominal and average integral
+frame rates and no rotation is needed. It otherwise re-encodes
+constant-frame-rate H.264/yuv420p footage. Use `copy` for a self-contained
+capture. Fractional source rates are conformed to the nearest integral rate;
+an explicit `--fps` must be a positive integer.
+
+Use `--recordings <name> [<name> ...]` to validate or prepare selected takes.
+If only a calibration convention changes after videos are prepared, use
 `--calibration-only --overwrite` to verify and reuse those videos.
+Calibration-only reuse requires the same image rotation recorded in the
+existing manifest.
 
 ## Validate before MAMMA
 

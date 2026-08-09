@@ -18,6 +18,7 @@ Depthkit/Scatter convention validated for the Xuelong rig:
 from __future__ import annotations
 
 import argparse
+from fractions import Fraction
 import hashlib
 import json
 import math
@@ -38,6 +39,16 @@ SENSOR_RE = re.compile(r"Sensor(?P<number>\d+)-", re.IGNORECASE)
 
 class ConversionError(RuntimeError):
     """A user-actionable project or conversion error."""
+
+
+def positive_integer(value: str) -> int:
+    try:
+        parsed = int(value)
+    except ValueError as exc:
+        raise argparse.ArgumentTypeError("must be an integer") from exc
+    if parsed <= 0:
+        raise argparse.ArgumentTypeError("must be positive")
+    return parsed
 
 
 @dataclass(frozen=True)
@@ -168,6 +179,58 @@ def inspect_video(path: Path) -> tuple[int, int, float, int]:
     if min(width, height, count) <= 0 or not math.isfinite(fps) or fps <= 0:
         raise ConversionError(f"Invalid video metadata: {path}")
     return width, height, fps, count
+
+
+def rate_as_float(value: str) -> float:
+    try:
+        rate = float(Fraction(value))
+    except (ValueError, ZeroDivisionError) as exc:
+        raise ConversionError(f"Invalid ffprobe frame rate: {value!r}") from exc
+    if not math.isfinite(rate) or rate <= 0:
+        raise ConversionError(f"Invalid ffprobe frame rate: {value!r}")
+    return rate
+
+
+def video_is_conformant_for_symlink(path: Path, target_fps: int) -> bool:
+    """Return whether ffprobe metadata is safe for automatic direct reuse."""
+    try:
+        result = subprocess.run(
+            [
+                "ffprobe",
+                "-v",
+                "error",
+                "-select_streams",
+                "v:0",
+                "-show_entries",
+                "stream=codec_name,pix_fmt,r_frame_rate,avg_frame_rate",
+                "-of",
+                "json",
+                str(path),
+            ],
+            check=True,
+            capture_output=True,
+            text=True,
+        )
+        streams = json.loads(result.stdout).get("streams", [])
+        if len(streams) != 1:
+            return False
+        stream = streams[0]
+        nominal_fps = rate_as_float(stream["r_frame_rate"])
+        average_fps = rate_as_float(stream["avg_frame_rate"])
+    except (
+        ConversionError,
+        FileNotFoundError,
+        KeyError,
+        json.JSONDecodeError,
+        subprocess.CalledProcessError,
+    ):
+        return False
+    return (
+        stream.get("codec_name") == "h264"
+        and stream.get("pix_fmt") == "yuv420p"
+        and math.isclose(nominal_fps, target_fps, abs_tol=1e-3)
+        and math.isclose(average_fps, target_fps, abs_tol=1e-3)
+    )
 
 
 def recording_is_available(project_root: Path, recording: dict[str, Any]) -> bool:
@@ -334,7 +397,12 @@ def camera_look_at_score(
         norm = float(np.linalg.norm(direction))
         if norm > 1e-9:
             scores.append(float(np.dot(pose[:3, 2], direction / norm)))
-    return float(np.mean(scores))
+    if not scores:
+        raise ConversionError("Camera rig has no distinct camera centers")
+    score = float(np.mean(scores))
+    if not math.isfinite(score):
+        raise ConversionError("Camera look-at score is non-finite")
+    return score
 
 
 def write_json(path: Path, value: Any, overwrite: bool) -> None:
@@ -348,10 +416,20 @@ def write_json(path: Path, value: Any, overwrite: bool) -> None:
     temporary.replace(path)
 
 
-def replaceable_destination(destination: Path, source: Path, overwrite: bool) -> bool:
+def replaceable_destination(
+    destination: Path,
+    source: Path,
+    overwrite: bool,
+    *,
+    reuse_matching_symlink: bool,
+) -> bool:
     if not os.path.lexists(destination):
         return True
-    if destination.is_symlink() and destination.resolve() == source.resolve():
+    if (
+        reuse_matching_symlink
+        and destination.is_symlink()
+        and destination.resolve() == source.resolve()
+    ):
         return False
     if not overwrite:
         raise ConversionError(f"Refusing to overwrite {destination}; pass --overwrite")
@@ -374,7 +452,8 @@ def prepare_video(
     if mode == "auto":
         actual_mode = (
             "symlink"
-            if rotation == "none" and abs(camera.fps - target_fps) < 1e-3
+            if rotation == "none"
+            and video_is_conformant_for_symlink(camera.source, int(target_fps))
             else "reencode"
         )
     if rotation != "none" and actual_mode in ("symlink", "copy"):
@@ -382,8 +461,13 @@ def prepare_video(
             f"--video-mode {actual_mode} cannot apply --rotate {rotation}; "
             "use auto or reencode"
         )
-    if not replaceable_destination(destination, camera.source, overwrite):
-        return "existing-symlink"
+    if not replaceable_destination(
+        destination,
+        camera.source,
+        overwrite,
+        reuse_matching_symlink=actual_mode == "symlink",
+    ):
+        return actual_mode
     temporary = destination.with_name(
         f".{destination.stem}.partial{destination.suffix}"
     )
@@ -449,6 +533,26 @@ def source_fingerprint(camera: CameraStream) -> dict[str, Any]:
     }
 
 
+def invalidate_capture_descriptors(output: Path) -> None:
+    for name in ("calibration.json", "capture.json", "conversion_manifest.json"):
+        (output / name).unlink(missing_ok=True)
+
+
+def validate_calibration_only_manifest(output: Path, rotation: str) -> None:
+    manifest_path = output / "conversion_manifest.json"
+    try:
+        manifest = load_json(manifest_path)
+    except ConversionError as exc:
+        raise ConversionError(
+            "--calibration-only requires a valid existing conversion manifest"
+        ) from exc
+    if manifest.get("rotation") != rotation:
+        raise ConversionError(
+            "--calibration-only cannot change image rotation; "
+            "re-run video preparation with --overwrite"
+        )
+
+
 def calibrations_match(
     reference: dict[str, Any], candidate: dict[str, Any], tolerance: float = 1e-8
 ) -> bool:
@@ -487,11 +591,20 @@ def parse_args() -> argparse.Namespace:
         help="Prepared MAMMA dataset directory; omit with --validate-only",
     )
     parser.add_argument(
-        "recordings",
-        nargs="*",
+        "--recordings",
+        nargs="+",
+        default=[],
         help="Recording names; defaults to every recording whose RGB assets exist",
     )
-    parser.add_argument("--fps", type=float, default=None, help="Override capture FPS")
+    parser.add_argument(
+        "--fps",
+        type=positive_integer,
+        default=None,
+        help=(
+            "Positive integral output FPS. When omitted, the nearest integral "
+            "rate to the first source is used."
+        ),
+    )
     parser.add_argument(
         "--video-mode", choices=("auto", "symlink", "copy", "reencode"), default="auto"
     )
@@ -542,10 +655,24 @@ def main() -> None:
             raise ConversionError(
                 f"Recording {name!r} does not use the same camera rig"
             )
-    fps = float(args.fps if args.fps is not None else first[0].fps)
-    if not math.isfinite(fps) or fps <= 0:
-        raise ConversionError("FPS must be finite and positive")
+    fps = int(args.fps if args.fps is not None else round(first[0].fps))
+    if fps <= 0:
+        raise ConversionError("Cannot derive a positive integral output FPS")
     score = camera_look_at_score(first, args.color_extrinsics_direction)
+    calibration = {
+        camera.name: mamma_camera(camera, args.rotate, args.color_extrinsics_direction)
+        for camera in first
+    }
+    for name, cameras in takes.items():
+        for camera in cameras:
+            candidate = mamma_camera(
+                camera, args.rotate, args.color_extrinsics_direction
+            )
+            if not calibrations_match(calibration[camera.name], candidate):
+                raise ConversionError(
+                    f"{name!r} uses different calibration for {camera.name}; "
+                    "prepare recordings with a shared rig separately"
+                )
     print(
         f"Validated {len(takes)} recording(s), {len(first)} cameras, look-at score={score:.4f}"
     )
@@ -574,20 +701,11 @@ def main() -> None:
         )
     output.mkdir(parents=True, exist_ok=True)
 
-    calibration = {
-        camera.name: mamma_camera(camera, args.rotate, args.color_extrinsics_direction)
-        for camera in first
-    }
-    for name, cameras in takes.items():
-        for camera in cameras:
-            candidate = mamma_camera(
-                camera, args.rotate, args.color_extrinsics_direction
-            )
-            if not calibrations_match(calibration[camera.name], candidate):
-                raise ConversionError(
-                    f"{name!r} uses different calibration for {camera.name}; "
-                    "prepare recordings with a shared rig separately"
-                )
+    if args.calibration_only:
+        validate_calibration_only_manifest(output, args.rotate)
+    elif args.overwrite:
+        invalidate_capture_descriptors(output)
+
     manifest_takes: dict[str, Any] = {}
     for name, cameras in takes.items():
         videos_dir = output / name / "videos"

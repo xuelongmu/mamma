@@ -145,11 +145,12 @@ def landmark_active_frames(
     ma_2d_dir: Path | None,
     cameras: list[str],
     frame_count: int,
+    body_count: int,
     min_visible_cameras: int,
     mean_visibility_threshold: float,
 ) -> np.ndarray:
     if ma_2d_dir is None:
-        return np.ones(frame_count, dtype=bool)
+        return np.ones((frame_count, body_count), dtype=bool)
     if min_visible_cameras <= 0:
         raise ValueError("--min-visible-cameras must be positive")
     if not 0.0 <= mean_visibility_threshold <= 1.0:
@@ -167,16 +168,21 @@ def landmark_active_frames(
                 f"{path} has {len(visibility)} visibility frames; "
                 f"the reconstruction has {frame_count}"
             )
-        axes = tuple(range(1, visibility.ndim))
-        score = (
-            visibility[:frame_count].mean(axis=axes)
-            if axes
-            else visibility[:frame_count]
-        )
+        if visibility.ndim == 1:
+            visibility = visibility[:, None]
+        axes = tuple(range(2, visibility.ndim))
+        score = visibility[:frame_count]
+        if axes:
+            score = score.mean(axis=axes)
+        if score.shape[1] != body_count:
+            raise ValueError(
+                f"{path} has visibility for {score.shape[1]} bodies; "
+                f"the reconstruction has {body_count}"
+            )
         camera_scores.append(score)
-    stacked = np.stack(camera_scores, axis=1)
+    stacked = np.stack(camera_scores, axis=2)
     active = (
-        (stacked > mean_visibility_threshold).sum(axis=1)
+        (stacked > mean_visibility_threshold).sum(axis=2)
         >= min_visible_cameras
     )
     if not active.any():
@@ -240,14 +246,22 @@ def frame_geometry(
     main_aspect: float,
 ) -> tuple[np.ndarray, float, float, float, float]:
     n_frames = len(motions[0])
-    centers = np.empty((n_frames, 3), dtype=np.float32)
-    spans = np.empty((n_frames, 3), dtype=np.float32)
+    centers = np.full((n_frames, 3), np.nan, dtype=np.float32)
+    spans = np.full((n_frames, 3), np.nan, dtype=np.float32)
     for frame in range(n_frames):
-        mins = np.min([motion[frame].min(axis=0) for motion in motions], axis=0)
-        maxs = np.max([motion[frame].max(axis=0) for motion in motions], axis=0)
+        visible_vertices = [
+            motion[frame]
+            for body_index, motion in enumerate(motions)
+            if active_frames[frame, body_index]
+        ]
+        if not visible_vertices:
+            continue
+        mins = np.min([vertices.min(axis=0) for vertices in visible_vertices], axis=0)
+        maxs = np.max([vertices.max(axis=0) for vertices in visible_vertices], axis=0)
         centers[frame] = (mins + maxs) / 2
         spans[frame] = maxs - mins
-    active_indices = np.flatnonzero(active_frames)
+    frame_is_active = active_frames.any(axis=1)
+    active_indices = np.flatnonzero(frame_is_active)
     all_indices = np.arange(n_frames)
     for axis in range(3):
         centers[:, axis] = np.interp(
@@ -257,16 +271,20 @@ def frame_geometry(
     floor_y = float(
         np.percentile(
             np.concatenate(
-                [motion[active_frames, :, 1].min(axis=1) for motion in motions]
+                [
+                    motion[active_frames[:, body_index], :, 1].min(axis=1)
+                    for body_index, motion in enumerate(motions)
+                    if active_frames[:, body_index].any()
+                ]
             ),
             5,
         )
     )
     camera_distance = max(
         6.0,
-        float(np.percentile(spans[active_frames, 1], 99))
+        float(np.percentile(spans[frame_is_active, 1], 99))
         / (2 * np.tan(np.deg2rad(21))),
-        float(np.percentile(spans[active_frames, 0], 99))
+        float(np.percentile(spans[frame_is_active, 0], 99))
         / (2 * np.tan(np.deg2rad(21)) * main_aspect),
     ) * 1.28
     ground_span = max(
@@ -277,8 +295,8 @@ def frame_geometry(
     ground_span_per_frame = np.linalg.norm(spans[:, [0, 2]], axis=1)
     ortho_ymag = max(
         1.32,
-        float(np.percentile(spans[active_frames, 1], 99)) * 0.64,
-        float(np.percentile(ground_span_per_frame[active_frames], 99))
+        float(np.percentile(spans[frame_is_active, 1], 99)) * 0.64,
+        float(np.percentile(ground_span_per_frame[frame_is_active], 99))
         / (2 * main_aspect)
         * 1.20,
     )
@@ -381,6 +399,7 @@ def main() -> int:
         args.ma_2d_dir,
         args.cams,
         total_frames,
+        len(motions),
         args.min_visible_cameras,
         args.mean_visibility_threshold,
     )
@@ -478,7 +497,7 @@ def main() -> int:
                 target = centers[local_frame].copy()
                 target[1] = max(target[1], floor_y + 0.9)
                 for body_index, node in enumerate(body_nodes):
-                    if active_frames[frame_number]:
+                    if active_frames[frame_number, body_index]:
                         if not body_nodes_attached[body_index]:
                             scene.add_node(node)
                             body_nodes_attached[body_index] = True
