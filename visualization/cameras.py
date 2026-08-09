@@ -66,6 +66,7 @@ class Camera:
     fps: Optional[int] = None
     distortion_model: str = "radtan"           # radtan, OpenCV Brown, or Vicon radial-2
     distortion_coeffs: tuple = (0.0, 0.0, 0.0, 0.0)
+    source_pixel_space: str = "unknown"
 
     def scaled(self, factor: float) -> "Camera":
         """Return a copy with intrinsics, width, and height scaled by ``factor``.
@@ -94,6 +95,7 @@ class Camera:
             fps=self.fps,
             distortion_model=self.distortion_model,
             distortion_coeffs=self.distortion_coeffs,
+            source_pixel_space=self.source_pixel_space,
         )
 
 
@@ -216,6 +218,12 @@ def _load_one(npz_path: str) -> Optional[Camera]:
                 distortion_model = "vicon_radial_2"
                 distortion_coeffs = tuple(float(v) for v in v2.tolist())
 
+        source_pixel_space = "unknown"
+        if "source_pixel_space" in files:
+            source_pixel_space = _to_str(data["source_pixel_space"])
+        elif "pixel_space" in files:
+            source_pixel_space = _to_str(data["pixel_space"])
+
         return Camera(
             name=name,
             intrinsics=K,
@@ -229,6 +237,7 @@ def _load_one(npz_path: str) -> Optional[Camera]:
             fps=fps,
             distortion_model=distortion_model,
             distortion_coeffs=distortion_coeffs,
+            source_pixel_space=source_pixel_space,
         )
     finally:
         data.close()
@@ -264,6 +273,7 @@ class MultiViewCameras:
         images_root_dir: Optional[str] = None,
         frame_start: Optional[int] = None,
         frame_end: Optional[int] = None,
+        source_pixel_space: str = "unknown",
     ) -> "MultiViewCameras":
         """Build :class:`Camera` objects in-memory from a calibration file.
 
@@ -334,6 +344,7 @@ class MultiViewCameras:
                 fps=None,
                 distortion_model=str(capt_cam.distortion_model),
                 distortion_coeffs=tuple(float(v) for v in capt_cam.distortion_coeffs),
+                source_pixel_space=source_pixel_space,
             ))
         return cls(tuple(cameras))
 

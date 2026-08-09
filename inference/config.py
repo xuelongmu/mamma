@@ -52,6 +52,7 @@ from .runner import ALL_STEPS
 
 VALID_ENGINES = ("conda", "apptainer", "docker")
 VALID_DISTORTION_MODES = ("auto", "undistort", "raw")
+VALID_SOURCE_PIXEL_SPACES = ("raw_distorted", "pinhole_undistorted", "unknown")
 
 _YAML_SUFFIXES = (".yaml", ".yml")
 _JSON_SUFFIXES = (".json",)
@@ -90,6 +91,7 @@ def synthesize_capture(
     footage_dir: str,
     calib_path: str,
     seq_name: str,
+    source_pixel_space: str = "unknown",
 ) -> dict:
     """Build an in-memory capture-config dict for one sequence.
 
@@ -130,6 +132,13 @@ def synthesize_capture(
     """
     import os
     from pathlib import Path
+
+    source_pixel_space = str(source_pixel_space).lower()
+    if source_pixel_space not in VALID_SOURCE_PIXEL_SPACES:
+        raise ValueError(
+            f"source_pixel_space must be one of {VALID_SOURCE_PIXEL_SPACES}, "
+            f"got {source_pixel_space!r}"
+        )
 
     footage = Path(footage_dir).resolve()
     if not footage.is_dir():
@@ -184,6 +193,7 @@ def synthesize_capture(
         "cam_fps": 30,
         "cams": cams,
         "sequences": {"000": {"name": seq_name}},
+        "source_pixel_space": source_pixel_space,
     }
     if layout == "videos" and videos_subdir and videos_subdir != "videos_crf24":
         capture["videos_subdir"] = videos_subdir
@@ -310,6 +320,9 @@ def materialize_run_config(
     cfg.setdefault("global", {})
     g = cfg["global"]
     g["capture_json"] = capture_path
+    g["source_pixel_space"] = capture_data.get(
+        "source_pixel_space", g.get("source_pixel_space", "unknown")
+    )
 
     if seq_ids is None and seq_names is not None:
         seq_ids = _seq_ids_from_names_in_data(capture_data, seq_names)
@@ -511,6 +524,12 @@ def validate(cfg: dict) -> None:
         errors.append(
             f"global.distortion_mode: {distortion_mode!r} not in "
             f"{VALID_DISTORTION_MODES}"
+        )
+    source_pixel_space = str(g.get("source_pixel_space", "unknown")).lower()
+    if source_pixel_space not in VALID_SOURCE_PIXEL_SPACES:
+        errors.append(
+            f"global.source_pixel_space: {source_pixel_space!r} not in "
+            f"{VALID_SOURCE_PIXEL_SPACES}"
         )
     if "distortion_mode" in g and "undistort" in g:
         errors.append(

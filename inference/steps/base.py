@@ -213,6 +213,16 @@ class StepBuilder:
             )
         return ["--distortion-mode", mode]
 
+    def _source_pixel_space_flag(self) -> List[str]:
+        """Emit the capture's independent delivered-frame pixel space."""
+        value = str(self.global_cfg.get("source_pixel_space", "unknown")).lower()
+        valid = ("raw_distorted", "pinhole_undistorted", "unknown")
+        if value not in valid:
+            raise RuntimeError(
+                f"global.source_pixel_space must be one of {valid}, got {value!r}"
+            )
+        return ["--source-pixel-space", value]
+
     def _frame_range_flags(self) -> List[str]:
         """Translate ``global.start_frame`` / ``global.end_frame`` to argv.
 

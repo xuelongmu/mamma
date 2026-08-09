@@ -66,6 +66,7 @@ def run_visualization(
     faces_path=None,
     colors_rgb: Optional[Sequence[Tuple[float, float, float]]] = None,
     undistort: bool = False,
+    distortion_mode: Optional[str] = None,
     rerun_images: bool = True,
     rerun_image_long_edge: int = 480,
     rerun_image_jpeg_quality: int = 75,
@@ -77,6 +78,8 @@ def run_visualization(
     ``FileNotFoundError`` if any required input dir is missing.
     """
     t_total = time.perf_counter()
+    if distortion_mode is None:
+        distortion_mode = "undistort" if undistort else "raw"
 
     seq_name = str(seq_name)
     ma_3d_dir = Path(ma_3d_dir)
@@ -106,8 +109,15 @@ def run_visualization(
         log.info("seq=%s cameras from in-memory MultiViewCameras", seq_name)
     if not rerun_light and ma_2d_dir is not None:
         from capture.geometry import geometry_record, validate_geometry_manifest
-        mode = "undistort" if undistort else "raw"
-        records = [geometry_record(cam, mode, name=cam.name) for cam in cameras]
+        records = [
+            geometry_record(
+                cam,
+                distortion_mode,
+                name=cam.name,
+                source_pixel_space=cam.source_pixel_space,
+            )
+            for cam in cameras
+        ]
         validate_geometry_manifest(
             Path(ma_2d_dir) / seq_name, records, "ma_vis"
         )
@@ -171,7 +181,7 @@ def run_visualization(
                 cameras,
                 jpeg_quality=rerun_image_jpeg_quality,
                 num_workers=rerun_image_num_workers,
-                undistort=undistort,
+                distortion_mode=distortion_mode,
             )
             log.info("logged camera image streams in %.2fs", time.perf_counter() - t)
 
@@ -199,7 +209,7 @@ def run_visualization(
                 num_workers=overlay_num_workers,
                 image_prefix=overlay_image_prefix,
                 colors_rgb=colors_rgb,
-                undistort=undistort,
+                distortion_mode=distortion_mode,
             )
             overlay_paths = [r.video_path for r in results if r.video_path is not None]
             log.info(

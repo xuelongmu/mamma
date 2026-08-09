@@ -64,7 +64,13 @@ def _build_parser() -> argparse.ArgumentParser:
     p.add_argument("--distortion-mode", choices=["auto", "undistort", "raw"],
                    default=None,
                    help="Pixel-space policy for overlay and Rerun backgrounds. "
-                        "Default auto canonicalizes supported non-zero distortion.")
+                        "Default auto follows the explicit source pixel space.")
+    p.add_argument(
+        "--source-pixel-space",
+        choices=["raw_distorted", "pinhole_undistorted", "unknown"],
+        default=None,
+        help="Delivered RGB pixel space in standalone mode; chained mode reads ma_cap metadata.",
+    )
     p.add_argument("--start-frame", "--start_frame", "--start", type=int,
                    default=None, dest="start_frame",
                    help="Standalone mode: first source-video frame to read "
@@ -224,6 +230,7 @@ def main(argv=None) -> None:
             images_root_dir=args.images_root_dir,
             frame_start=args.start_frame,
             frame_end=args.end_frame,
+            source_pixel_space=args.source_pixel_space or "unknown",
         )
         sys.stderr.write(
             f"loaded {len(cameras)} cameras from {args.calibration} "
@@ -250,7 +257,7 @@ def main(argv=None) -> None:
         overlay_image_prefix=args.overlay_image_prefix,
         max_preview_cams=args.max_preview_cams,
         faces_path=args.faces,
-        undistort=distortion_mode != "raw",
+        distortion_mode=distortion_mode,
         rerun_images=args.rerun_images,
         rerun_image_long_edge=args.rerun_image_long_edge,
         rerun_image_jpeg_quality=args.rerun_image_jpeg_quality,

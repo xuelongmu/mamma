@@ -254,6 +254,7 @@ def process_seq(
     undistort=False,
     distortion_mode=None,
     calibration_path=None,
+    source_pixel_space=None,
 ):
     if not yolo_checkpoint:
         raise ValueError(
@@ -356,6 +357,7 @@ def process_seq(
                     for key in (
                         'cam_int', 'cam_ext', 'cam_img_h', 'cam_img_w',
                         'distortion_model', 'distortion_coeffs', 'vicon_radial_2',
+                        'source_pixel_space', 'pixel_space',
                     ):
                         if key in npz_data:
                             cd[key] = npz_data[key]
@@ -434,6 +436,8 @@ def process_seq(
                 'distortion_coeffs',
                 np.asarray(cam.distortion_coeffs, dtype=np.float64),
             )
+        if source_pixel_space is not None and (videos_dir or images_root_dir):
+            cd['source_pixel_space'] = np.array(source_pixel_space)
         cd['_distortion_mode'] = distortion_mode
 
     geometry_records = [

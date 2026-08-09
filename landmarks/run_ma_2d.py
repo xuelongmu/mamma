@@ -339,8 +339,14 @@ def parser():
                            'auto/undistort modes; chained mode reads ma_cap metadata.')
     args.add_argument('--distortion-mode', choices=['auto', 'undistort', 'raw'],
                       default=None,
-                      help='Pixel-space policy. auto (default) undistorts supported '
-                           'non-zero calibration before landmark inference.')
+                      help='Pixel-space policy. auto (default) follows the explicit '
+                           'source-pixel-space declaration.')
+    args.add_argument(
+        '--source-pixel-space',
+        choices=['raw_distorted', 'pinhole_undistorted', 'unknown'],
+        default=None,
+        help='Delivered RGB pixel space for standalone videos/images. Chained mode reads ma_cap metadata.',
+    )
     args.add_argument('--undistort', action='store_true',
                       help='Deprecated alias for --distortion-mode undistort.')
     args.add_argument('--start', type=int, default=None,
@@ -483,6 +489,7 @@ def _build_cam_sources(args, img_folder=None):
             cam = _cam_for(str(cam_data['cam_name']))
             sources.append(frame_source_from_cam_data(
                 cam_data, camera=cam, distortion_mode=args.distortion_mode,
+                source_pixel_space=args.source_pixel_space,
             ))
         return sources
 
@@ -495,6 +502,7 @@ def _build_cam_sources(args, img_folder=None):
             cam = _cam_for(str(cam_data['cam_name']))
             sources.append(frame_source_from_cam_data(
                 cam_data, camera=cam, distortion_mode=args.distortion_mode,
+                source_pixel_space=args.source_pixel_space,
             ))
         return sources
 
@@ -580,7 +588,12 @@ def main(args, out_folder, masks_folder, img_folder=None):
         write_geometry_manifest,
     )
     geometry_records = [
-        geometry_record(source.camera, args.distortion_mode, name=source.cam_name)
+        geometry_record(
+            source.camera,
+            args.distortion_mode,
+            name=source.cam_name,
+            source_pixel_space=source.source_pixel_space,
+        )
         for source in sources
     ]
     if masks_folder:

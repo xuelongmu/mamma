@@ -384,6 +384,7 @@ class RerunSceneLogger:
         jpeg_quality: int = 75,
         num_workers: Optional[int] = None,
         undistort: bool = False,
+        distortion_mode: Optional[str] = None,
     ) -> None:
         """Log a JPEG image stream onto each camera's ``image`` entity.
 
@@ -420,7 +421,11 @@ class RerunSceneLogger:
         if _repo_root not in _sys.path:
             _sys.path.insert(0, _repo_root)
         from capture.frame_source import ImageFileSource  # noqa: E402
+        from capture.geometry import resolve_distortion_mode  # noqa: E402
         from capture.undistort import undistort_rgb  # noqa: E402
+
+        if distortion_mode is None:
+            distortion_mode = "undistort" if undistort else "raw"
 
         cam_list = [c for c in cameras]
         usable = [c for c in cam_list if c.video_path or c.image_paths]
@@ -441,6 +446,9 @@ class RerunSceneLogger:
         encode_params = [int(cv2.IMWRITE_JPEG_QUALITY), int(jpeg_quality)]
 
         def _encode_one(cam: Camera):
+            apply_remap, output_pixel_space = resolve_distortion_mode(
+                distortion_mode, cam, cam.source_pixel_space
+            )
             scale = self._effective_scale(cam)
             W = max(1, int(round(cam.width * scale)))
             H = max(1, int(round(cam.height * scale)))
@@ -466,7 +474,7 @@ class RerunSceneLogger:
                         ok, bgr = cap.read()
                         if not ok:
                             break
-                        if undistort:
+                        if apply_remap:
                             rgb = cv2.cvtColor(bgr, cv2.COLOR_BGR2RGB)
                             rgb = undistort_rgb(rgb, cam)
                             bgr = cv2.cvtColor(rgb, cv2.COLOR_RGB2BGR)
@@ -479,8 +487,9 @@ class RerunSceneLogger:
             else:
                 # ma_cap pre-slices img_abs_path to the canonical range.
                 source = ImageFileSource(
-                    list(cam.image_paths), camera=cam, undistort=undistort,
-                    pixel_space="pinhole_undistorted" if undistort else "raw_distorted",
+                    list(cam.image_paths), camera=cam, undistort=apply_remap,
+                    pixel_space=output_pixel_space,
+                    source_pixel_space=cam.source_pixel_space,
                 )
                 for frame_id in range(len(source)):
                     rgb = source.read_rgb(frame_id)

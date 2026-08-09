@@ -59,6 +59,12 @@ def _build_parser() -> argparse.ArgumentParser:
     p.add_argument("--calib", default=None,
                    help="Calibration file (.yaml / .xcp / OpenCV .json) for the "
                         "alternative-run mode.")
+    p.add_argument(
+        "--source-pixel-space",
+        choices=("raw_distorted", "pinhole_undistorted", "unknown"),
+        default="unknown",
+        help="Delivered RGB pixel space for --footage mode (default: unknown).",
+    )
     p.add_argument("--out-tag", default=None,
                    help="Output sub-directory tag (default: 'local')")
     p.add_argument("--log-tag", default=None,
@@ -202,7 +208,10 @@ def main(argv=None) -> None:
             # file's stem, which would land outputs under e.g.
             # output/ma_*/run01/tmp_abc123/<seq>/...
             synth = config.synthesize_capture(
-                args.footage, args.calib, args.seq_name,
+                args.footage,
+                args.calib,
+                args.seq_name,
+                source_pixel_space=args.source_pixel_space,
             )
             synth_path = _persist_temp(synth)
             dataset_name = os.path.basename(args.footage.rstrip("/")) or "dataset"

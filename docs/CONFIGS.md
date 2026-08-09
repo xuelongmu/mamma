@@ -65,9 +65,11 @@ Common edits:
 - **Skip a step:** set `<step>.enabled: false`. Downstream steps either skip too (if they depended on the disabled one) or carry on (if they have another path to their inputs).
 - **Tune a step:** add `<step>.flags: ["--<flag> <value>"]`. The string is `shlex`-split, so `"--sam_version sam3"` becomes two argv tokens.
 - **Limit frames:** set `global.start_frame` / `global.end_frame`. Only `ma_cap` reads these; downstream steps pick up the range via the per-camera NPZ.
-- **Lens handling:** keep `global.distortion_mode: auto` to canonicalize supported
-  non-zero distortion before masks and landmarks. Use `raw` only for explicit
-  diagnostics; the pinhole-only optimizer rejects raw-distorted manifests.
+- **Lens handling:** declare `source_pixel_space` in the capture JSON, then
+  keep `global.distortion_mode: auto`. It remaps declared `raw_distorted`
+  inputs and preserves declared `pinhole_undistorted` inputs. It does not infer
+  source pixels from lens coefficients. Use `raw` only for diagnostics; the
+  pinhole-only optimizer rejects raw or unknown manifests.
 - **Change conda env:** `global.conda_env: my_other_env`.
 
 ### Common per-step flags
@@ -80,6 +82,8 @@ Source: [`capture/run_ma_cap.py`](../capture/run_ma_cap.py).
 
 - `--start N` / `--end N` — frame-range slice (per-camera). Usually set via `global.start_frame`/`end_frame` instead.
 - `--fps N` — override the FPS recorded in `global.npz`. Defaults to the capture's `cam_fps`.
+- `--source-pixel-space raw_distorted|pinhole_undistorted|unknown` — override
+  the capture declaration. Useful for standalone diagnostics.
 - `-v` / `-vv` — INFO / DEBUG logging.
 
 #### `ma_masks`
@@ -91,7 +95,7 @@ Source: [`segmentation/run_ma_masks.py`](../segmentation/run_ma_masks.py).
 - `--init_frame N` — frame index used for person-detection initialisation.
 - `--interactive` — click-to-init through a GUI instead of YOLO auto-detect.
 - `--distortion-mode auto|undistort|raw` — pipeline pixel-space policy. `auto`
-  is the default and supports Vicon, radtan, and OpenCV Brown calibration.
+  follows the source declaration; `undistort` is an explicit legacy override.
 
 #### `ma_2d`
 
@@ -187,7 +191,7 @@ For the on-disk data layout, see [`docs/INSTALL.md`](INSTALL.md).
 | `out_dir`       | path         | yes      | Root output directory. Override on the CLI with `--out-dir`. |
 | `cam_names`     | string list  | yes (run; presets omit) | Camera names. Forwarded as `--cam_names` to most steps. Presets omit this; the materializer derives it from `capture.cams` at submit time. |
 | `conda_env`     | string       | no       | Default conda env for the `conda` engine (default `mamma`). |
-| `distortion_mode` | enum       | no       | `auto` (default) canonicalizes supported non-zero distortion into pinhole pixels before detection; `undistort` requires calibration; `raw` is an explicit diagnostic opt-out. |
+| `distortion_mode` | enum       | no       | `auto` (default) follows the capture's explicit source pixel space; `undistort` explicitly remaps a known legacy raw source; `raw` preserves input pixels for diagnostics. |
 | `jobs_log_dir`  | path         | no       | Where per-(step, seq) `.log/.out/.err` files go. Falls back to `$MAMMA_DATA_DIR/logs` or `~/.mamma/logs`. |
 | `username`      | string       | no       | Inserted into log paths so multi-user setups don't collide. Falls back to `$USER`. |
 | `bind`          | string list  | no       | Extra `apptainer --bind` / `docker -v` entries. |
@@ -242,8 +246,9 @@ runner (for DONE-sentinel resolution + input lookup) and the GUI
 | `<seq>`           | Sequence name from the capture JSON's `sequences[...].name`/`ioi`.     | Per-sequence isolation. Sequence names embed the capture prefix today (e.g. `140725_Breakdance_Improv_1_…`), so collisions are unlikely, but the segment keeps the layout self-describing. |
 
 DONE sentinels live at `…/<seq>/DONE` (same path; one extra file).
-Frame-producing stages also write `geometry.json`. It records the pixel space,
-camera intrinsics, distortion model, coefficients hash, and image size. A stage
+Frame-producing stages also write `geometry.json`. It records both source and
+output pixel spaces, camera intrinsics, distortion model, coefficients hash,
+and image size. A stage
 refuses to consume a present manifest that disagrees with its current geometry;
 legacy outputs without a manifest are accepted with a warning.
 Per-(step, seq) log files live in a different root under

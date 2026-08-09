@@ -90,8 +90,14 @@ SAM backends:
                              'auto/undistort modes; chained mode reads calibration from ma_cap NPZs.')
     parser.add_argument('--distortion-mode', choices=['auto', 'undistort', 'raw'],
                         default=None,
-                        help='Pixel-space policy. auto (default) undistorts supported non-zero '
-                             'calibration; undistort requires calibration; raw is an explicit opt-out.')
+                        help='Pixel-space policy. auto (default) follows the explicit source '
+                             'pixel space; undistort requires calibration; raw preserves input pixels.')
+    parser.add_argument(
+        '--source-pixel-space',
+        choices=['raw_distorted', 'pinhole_undistorted', 'unknown'],
+        default=None,
+        help='Delivered RGB pixel space for standalone videos/images. Chained mode reads ma_cap metadata.',
+    )
     parser.add_argument('--undistort', action='store_true',
                         help='Deprecated alias for --distortion-mode undistort.')
 
@@ -284,6 +290,7 @@ SAM backends:
         undistort=args.undistort,
         distortion_mode=distortion_mode,
         calibration_path=args.calibration,
+        source_pixel_space=args.source_pixel_space,
     )
 
 

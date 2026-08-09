@@ -28,7 +28,12 @@ import numpy as np
 from PIL import Image
 
 from .calibration import Camera
-from .geometry import camera_from_cam_data, resolve_distortion_mode
+from .geometry import (
+    UNKNOWN_SPACE,
+    camera_from_cam_data,
+    resolve_distortion_mode,
+    source_pixel_space_from_cam_data,
+)
 from .undistort import undistort_rgb
 
 
@@ -68,6 +73,11 @@ class FrameSource(Protocol):
         """Coordinate system of returned frames."""
         ...
 
+    @property
+    def source_pixel_space(self) -> str:
+        """Coordinate system of the delivered, pre-remap frames."""
+        ...
+
 
 class ImageFileSource:
     """Frame source backed by image files on disk.
@@ -84,7 +94,8 @@ class ImageFileSource:
 
     def __init__(self, paths: List[str], camera_name: str = None,
                  *, camera: Optional[Camera] = None, undistort: bool = False,
-                 pixel_space: str = "raw_distorted"):
+                 pixel_space: str = "raw_distorted",
+                 source_pixel_space: str = UNKNOWN_SPACE):
         if not paths:
             raise ValueError("ImageFileSource requires at least one file path.")
         if undistort and camera is None:
@@ -95,6 +106,7 @@ class ImageFileSource:
         self._camera = camera
         self._undistort = undistort
         self._pixel_space = pixel_space
+        self._source_pixel_space = source_pixel_space
 
     def read_pil(self, idx: int) -> Image.Image:
         if idx < 0 or idx >= len(self._paths):
@@ -134,6 +146,10 @@ class ImageFileSource:
         return self._pixel_space
 
     @property
+    def source_pixel_space(self) -> str:
+        return self._source_pixel_space
+
+    @property
     def camera(self) -> Optional[Camera]:
         return self._camera
 
@@ -161,7 +177,8 @@ class VideoSource:
 
     def __init__(self, reader, camera_name: str = None,
                  *, camera: Optional[Camera] = None, undistort: bool = False,
-                 pixel_space: str = "raw_distorted"):
+                 pixel_space: str = "raw_distorted",
+                 source_pixel_space: str = UNKNOWN_SPACE):
         if undistort and camera is None:
             raise ValueError("VideoSource(undistort=True) requires a camera.")
         self._reader = reader
@@ -169,6 +186,7 @@ class VideoSource:
         self._camera = camera
         self._undistort = undistort
         self._pixel_space = pixel_space
+        self._source_pixel_space = source_pixel_space
 
     def read_pil(self, idx: int) -> Image.Image:
         if not self._undistort:
@@ -201,6 +219,10 @@ class VideoSource:
     @property
     def pixel_space(self) -> str:
         return self._pixel_space
+
+    @property
+    def source_pixel_space(self) -> str:
+        return self._source_pixel_space
 
     @property
     def camera(self) -> Optional[Camera]:
@@ -243,6 +265,7 @@ def frame_source_from_cam_data(
     camera: Optional[Camera] = None,
     undistort: bool = False,
     distortion_mode: Optional[str] = None,
+    source_pixel_space: Optional[str] = None,
 ) -> "FrameSource":
     """Build the appropriate FrameSource from a cam_data dictionary.
 
@@ -257,10 +280,10 @@ def frame_source_from_cam_data(
        canonical range, so the step inherits it automatically.
     3. ``cam_data['img_abs_path']`` — :class:`ImageFileSource`.
 
-    ``distortion_mode`` is ``auto`` / ``undistort`` / ``raw``. In ``auto``,
-    supported non-zero distortion is removed before returning frames. Pass
-    ``camera`` explicitly for standalone sources; chained sources reconstruct
-    it from the generic distortion fields in the ma_cap NPZ.
+    ``distortion_mode`` is ``auto`` / ``undistort`` / ``raw``. ``auto`` uses
+    the independent ``source_pixel_space`` declaration and never infers it
+    from lens coefficients. Pass ``camera`` and ``source_pixel_space`` for
+    standalone sources; chained sources reconstruct both from ma_cap metadata.
 
     ``undistort=True`` remains as a deprecated compatibility alias. As a
     convenience for callers that
@@ -280,7 +303,12 @@ def frame_source_from_cam_data(
     # ``raw_distorted`` rather than treating unknown calibration as pinhole.
     if camera is None:
         camera = camera_from_cam_data(cam_data)
-    undistort, pixel_space = resolve_distortion_mode(distortion_mode, camera)
+    if source_pixel_space is None:
+        source_pixel_space = source_pixel_space_from_cam_data(cam_data)
+    source_pixel_space = source_pixel_space or UNKNOWN_SPACE
+    undistort, pixel_space = resolve_distortion_mode(
+        distortion_mode, camera, source_pixel_space
+    )
     cam_name = str(cam_data.get('cam_name', ''))
 
     reader = cam_data.get('frame_reader')
@@ -301,8 +329,10 @@ def frame_source_from_cam_data(
     if reader is not None:
         return VideoSource(reader, camera_name=cam_name or None,
                            camera=camera, undistort=undistort,
-                           pixel_space=pixel_space)
+                           pixel_space=pixel_space,
+                           source_pixel_space=source_pixel_space)
     paths = cam_data['img_abs_path'].tolist()
     return ImageFileSource(paths, camera_name=cam_name or None,
                            camera=camera, undistort=undistort,
-                           pixel_space=pixel_space)
+                           pixel_space=pixel_space,
+                           source_pixel_space=source_pixel_space)

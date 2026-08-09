@@ -17,6 +17,8 @@ DISTORTION_MODES = ("auto", "undistort", "raw")
 GEOMETRY_FILENAME = "geometry.json"
 PINHOLE_SPACE = "pinhole_undistorted"
 RAW_SPACE = "raw_distorted"
+UNKNOWN_SPACE = "unknown"
+SOURCE_PIXEL_SPACES = (RAW_SPACE, PINHOLE_SPACE, UNKNOWN_SPACE)
 
 
 def unwrap_scalar(value):
@@ -70,20 +72,80 @@ def has_nonzero_distortion(camera: Optional[Camera]) -> bool:
     return any(v != 0.0 for v in coeffs)
 
 
-def resolve_distortion_mode(mode: str, camera: Optional[Camera]) -> tuple[bool, str]:
-    """Return ``(apply_remap, output_pixel_space)`` for one camera."""
+def normalize_source_pixel_space(value) -> str:
+    """Validate and normalize the pixel space of the delivered RGB frames."""
+    value = unwrap_scalar(value)
+    value = UNKNOWN_SPACE if value in (None, "") else str(value).lower()
+    if value not in SOURCE_PIXEL_SPACES:
+        raise ValueError(
+            f"source_pixel_space must be one of {SOURCE_PIXEL_SPACES}, got {value!r}"
+        )
+    return value
+
+
+def source_pixel_space_from_cam_data(cam_data: Mapping) -> str:
+    """Read the source-space declaration from ma_cap metadata.
+
+    ``pixel_space`` is accepted as the legacy field emitted by the first
+    geometry-contract implementation. Missing metadata is deliberately
+    ``unknown``: lens coefficients describe a calibration model, not whether
+    an exporter has already rectified the delivered frames.
+    """
+    value = cam_data.get("source_pixel_space")
+    if value is None:
+        value = cam_data.get("pixel_space")
+    return normalize_source_pixel_space(value)
+
+
+def resolve_distortion_mode(
+    mode: str,
+    camera: Optional[Camera],
+    source_pixel_space: str = UNKNOWN_SPACE,
+) -> tuple[bool, str]:
+    """Return ``(apply_remap, output_pixel_space)`` for one camera.
+
+    Calibration coefficients and source pixels are independent contracts.
+    ``auto`` only remaps a source explicitly declared ``raw_distorted``. A
+    non-zero lens model paired with an ``unknown`` source fails rather than
+    guessing. ``undistort`` is the explicit override for legacy inputs whose
+    raw source space is known operationally but not encoded in metadata.
+    """
     mode = str(mode or "auto").lower()
     if mode not in DISTORTION_MODES:
         raise ValueError(
             f"distortion_mode must be one of {DISTORTION_MODES}, got {mode!r}"
         )
+    source_pixel_space = normalize_source_pixel_space(source_pixel_space)
     nonzero = has_nonzero_distortion(camera)
     if mode == "raw":
-        return False, RAW_SPACE if nonzero else PINHOLE_SPACE
+        if source_pixel_space == UNKNOWN_SPACE:
+            return False, UNKNOWN_SPACE if nonzero else PINHOLE_SPACE
+        if source_pixel_space == RAW_SPACE and not nonzero:
+            return False, PINHOLE_SPACE
+        return False, source_pixel_space
+    if mode == "auto" and source_pixel_space == PINHOLE_SPACE:
+        return False, PINHOLE_SPACE
+    if mode == "undistort" and source_pixel_space == PINHOLE_SPACE:
+        raise ValueError(
+            "distortion_mode='undistort' would double-remap a source declared "
+            "pinhole_undistorted; use distortion_mode='auto' or 'raw'"
+        )
     if camera is None:
         if mode == "undistort":
             raise ValueError("distortion_mode='undistort' requires camera calibration")
-        return False, PINHOLE_SPACE
+        if source_pixel_space == RAW_SPACE:
+            raise ValueError(
+                "distortion_mode='auto' cannot canonicalize a raw_distorted "
+                "source without camera calibration"
+            )
+        return False, source_pixel_space
+    if mode == "auto" and source_pixel_space == UNKNOWN_SPACE and nonzero:
+        raise ValueError(
+            f"camera {camera.name!r} has non-zero distortion coefficients but "
+            "source_pixel_space is unknown. Declare source_pixel_space as "
+            f"{RAW_SPACE!r} or {PINHOLE_SPACE!r} in capture metadata, or use "
+            "an explicit distortion_mode"
+        )
     if camera.distortion_model not in VALID_DISTORTION_MODELS:
         if nonzero:
             raise ValueError(
@@ -99,11 +161,21 @@ def _sha256_array(value) -> str:
     return hashlib.sha256(array.tobytes(order="C")).hexdigest()
 
 
-def geometry_record(camera: Optional[Camera], mode: str, *, name: str = "") -> dict:
-    apply_remap, pixel_space = resolve_distortion_mode(mode, camera)
+def geometry_record(
+    camera: Optional[Camera],
+    mode: str,
+    *,
+    name: str = "",
+    source_pixel_space: str = UNKNOWN_SPACE,
+) -> dict:
+    source_pixel_space = normalize_source_pixel_space(source_pixel_space)
+    apply_remap, pixel_space = resolve_distortion_mode(
+        mode, camera, source_pixel_space
+    )
     if camera is None:
         return {
             "camera": name,
+            "source_pixel_space": source_pixel_space,
             "pixel_space": pixel_space,
             "remapped": apply_remap,
             "distortion_model": "none",
@@ -114,6 +186,7 @@ def geometry_record(camera: Optional[Camera], mode: str, *, name: str = "") -> d
         }
     return {
         "camera": camera.name or name,
+        "source_pixel_space": source_pixel_space,
         "pixel_space": pixel_space,
         "remapped": apply_remap,
         "distortion_model": camera.distortion_model,
@@ -129,14 +202,17 @@ def geometry_record_from_cam_data(cam_data: Mapping, mode: str) -> dict:
     if camera is None:
         camera = camera_from_cam_data(cam_data)
     name = str(unwrap_scalar(cam_data.get("cam_name")) or "")
-    return geometry_record(camera, mode, name=name)
+    source_pixel_space = source_pixel_space_from_cam_data(cam_data)
+    return geometry_record(
+        camera, mode, name=name, source_pixel_space=source_pixel_space
+    )
 
 
 def write_geometry_manifest(output_dir, stage: str, records: Iterable[dict]) -> Path:
     path = Path(output_dir) / GEOMETRY_FILENAME
     path.parent.mkdir(parents=True, exist_ok=True)
     by_camera = {record["camera"]: record for record in records}
-    payload = {"schema_version": 1, "stage": stage, "cameras": by_camera}
+    payload = {"schema_version": 2, "stage": stage, "cameras": by_camera}
     tmp_path = path.with_suffix(".json.tmp")
     with open(tmp_path, "w", encoding="utf-8") as handle:
         json.dump(payload, handle, indent=2, sort_keys=True)
@@ -151,12 +227,13 @@ def load_geometry_manifest(directory) -> Optional[dict]:
         return None
     with open(path, "r", encoding="utf-8") as handle:
         payload = json.load(handle)
-    if payload.get("schema_version") != 1 or not isinstance(payload.get("cameras"), dict):
+    if payload.get("schema_version") not in (1, 2) or not isinstance(payload.get("cameras"), dict):
         raise ValueError(f"invalid geometry manifest: {path}")
     return payload
 
 
 _MATCH_FIELDS = (
+    "source_pixel_space",
     "pixel_space",
     "distortion_model",
     "distortion_coeffs_sha256",
@@ -215,8 +292,10 @@ def require_pinhole_optimizer_geometry(prediction_dir) -> bool:
     ]
     if bad:
         raise ValueError(
-            "ma_3d uses a pinhole projector and cannot consume raw-distorted "
-            f"2D observations. Re-run ma_masks and ma_2d with "
-            f"distortion_mode=auto or undistort. Cameras: {', '.join(sorted(bad))}"
+            "ma_3d uses a pinhole projector and can only consume "
+            f"{PINHOLE_SPACE!r} 2D observations. Declare the RGB source pixel "
+            "space and re-run ma_masks and ma_2d with distortion_mode=auto, "
+            f"or use explicit undistort for known raw inputs. Cameras: "
+            f"{', '.join(sorted(bad))}"
         )
     return True
