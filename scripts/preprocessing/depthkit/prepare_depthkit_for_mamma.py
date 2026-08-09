@@ -598,6 +598,22 @@ def invalidate_capture_descriptors(output: Path) -> None:
         (output / name).unlink(missing_ok=True)
 
 
+def publish_capture_descriptors(
+    output: Path,
+    calibration: dict[str, Any],
+    capture: dict[str, Any],
+    manifest: dict[str, Any],
+    *,
+    overwrite: bool,
+    invalidate_existing: bool,
+) -> None:
+    if invalidate_existing:
+        invalidate_capture_descriptors(output)
+    write_json(output / "calibration.json", calibration, overwrite)
+    write_json(output / "capture.json", capture, overwrite)
+    write_json(output / "conversion_manifest.json", manifest, overwrite)
+
+
 def validate_recording_names(recording_names: list[str]) -> None:
     if len(set(recording_names)) != len(recording_names):
         raise ConversionError("Recording names must be unique")
@@ -987,9 +1003,14 @@ def main() -> None:
         "fps": fps,
         "recordings": manifest_takes,
     }
-    write_json(output / "calibration.json", calibration, args.overwrite)
-    write_json(output / "capture.json", capture, args.overwrite)
-    write_json(output / "conversion_manifest.json", manifest, args.overwrite)
+    publish_capture_descriptors(
+        output,
+        calibration,
+        capture,
+        manifest,
+        overwrite=args.overwrite,
+        invalidate_existing=args.calibration_only and args.overwrite,
+    )
     print(f"Wrote MAMMA capture descriptor: {output / 'capture.json'}")
 
 

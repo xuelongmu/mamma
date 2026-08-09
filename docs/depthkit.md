@@ -88,7 +88,8 @@ Calibration-only reuse requires the same image rotation recorded in the
 existing manifest. It also requires the source project, calibration hash,
 recording and camera sets, source paths, device IDs, and video fingerprints to
 match; otherwise, prepare the videos again rather than publishing mismatched
-provenance.
+provenance. Only after every reused video passes does calibration-only
+overwrite withdraw the old descriptor set and publish replacement metadata.
 
 ## Validate before MAMMA
 

@@ -401,6 +401,37 @@ class PublicationTests(unittest.TestCase):
             converter.invalidate_capture_descriptors(output)
             self.assertTrue(all(not (output / name).exists() for name in names))
 
+    def test_calibration_only_publication_invalidates_before_first_write(self):
+        with tempfile.TemporaryDirectory() as directory:
+            output = Path(directory)
+            names = (
+                "calibration.json",
+                "capture.json",
+                "conversion_manifest.json",
+            )
+            for name in names:
+                (output / name).write_text("old", encoding="utf-8")
+
+            def fail_first_write(*_args, **_kwargs):
+                self.assertTrue(all(not (output / name).exists() for name in names))
+                raise OSError("simulated full disk")
+
+            with mock.patch.object(
+                converter,
+                "write_json",
+                side_effect=fail_first_write,
+            ):
+                with self.assertRaisesRegex(OSError, "full disk"):
+                    converter.publish_capture_descriptors(
+                        output,
+                        {},
+                        {},
+                        {},
+                        overwrite=True,
+                        invalidate_existing=True,
+                    )
+            self.assertTrue(all(not (output / name).exists() for name in names))
+
 
 class ArgumentTests(unittest.TestCase):
     def test_recording_names_must_be_unique_safe_path_components(self):

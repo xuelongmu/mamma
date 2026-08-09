@@ -55,6 +55,8 @@ calibration-convention option after videos have already been prepared, pass
 without re-encoding them. The requested image rotation must match the existing
 conversion manifest, as must the source project, calibration hash, recordings,
 cameras, source paths, device IDs, and video fingerprints.
+After all reused videos pass those checks, calibration-only overwrite withdraws
+the complete old descriptor set before publishing any replacement metadata.
 
 Every participating device in an explicitly selected recording must have a
 color stream. Without `--overwrite`, the adapter preflights all descriptors and

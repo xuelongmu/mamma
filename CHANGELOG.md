@@ -91,5 +91,7 @@ machine-local progress belong in [`docs/status.md`](docs/status.md).
   degenerate coincident-center rigs remain invalid.
 - Depthkit selection rejects devices without color streams, and non-overwrite
   conversion preflights every descriptor and video before writing any pixels.
+- Calibration-only overwrite validates every reused video before withdrawing
+  the complete old descriptor set and publishing replacement metadata.
 - Share-video visibility gating tracks each reconstructed body independently.
 - Share-video camera selections reject duplicate names before visibility counts.
