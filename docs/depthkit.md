@@ -80,7 +80,8 @@ also used automatically for MAMMA visualization playback. Any selected color
 stream that reports dropped capture frames is rejected because MAMMA aligns
 views by frame index. Masked-output and collage diagnostic videos inherit the
 same capture rate. Every selected camera and recording must report one common
-source rate before all streams can be conformed together.
+source rate before all streams can be conformed together, and every camera in a
+take must report the same synchronization offset.
 
 Use `--recordings <name> [<name> ...]` to validate or prepare selected takes.
 If only a calibration convention changes after videos are prepared, use

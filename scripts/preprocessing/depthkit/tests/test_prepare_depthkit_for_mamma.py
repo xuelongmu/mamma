@@ -252,6 +252,28 @@ class PublicationTests(unittest.TestCase):
         with self.assertRaisesRegex(converter.ConversionError, "dropped capture"):
             converter.validate_synchronized_streams({"take": [dropped_camera]})
 
+    def test_mismatched_stream_sync_offsets_are_rejected(self):
+        first = camera_stream(Path("first"), name="cam_01", device_id="device_1")
+        second = camera_stream(Path("second"), name="cam_02", device_id="device_2")
+        first = converter.CameraStream(
+            **{
+                **first.__dict__,
+                "stream": {
+                    "syncOffset": {"negative": False, "ticks": 0, "timebase": 1}
+                },
+            }
+        )
+        second = converter.CameraStream(
+            **{
+                **second.__dict__,
+                "stream": {
+                    "syncOffset": {"negative": False, "ticks": 1, "timebase": 30}
+                },
+            }
+        )
+        with self.assertRaisesRegex(converter.ConversionError, "mismatched"):
+            converter.validate_synchronized_streams({"take": [first, second]})
+
     def test_mismatched_source_camera_rates_are_rejected(self):
         first = camera_stream(Path("first"), name="cam_01", device_id="device_1")
         second = camera_stream(Path("second"), name="cam_02", device_id="device_2")

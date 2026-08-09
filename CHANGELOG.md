@@ -95,5 +95,7 @@ machine-local progress belong in [`docs/status.md`](docs/status.md).
   the complete old descriptor set and publishing replacement metadata.
 - Depthkit conversion requires one common source FPS across every selected
   camera and recording before any all-stream rate conformance.
+- Depthkit conversion requires equivalent synchronization offsets within each
+  take instead of publishing unshifted, frame-misaligned camera streams.
 - Share-video visibility gating tracks each reconstructed body independently.
 - Share-video camera selections reject duplicate names before visibility counts.

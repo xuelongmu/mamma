@@ -269,3 +269,14 @@ camera 05 remained an isolated high-error view for the second body.
   then reuse compatible masks, identities, and 2D landmarks for nested 6/4-view
   `ma_3d` runs with distinct tags. Record per-camera failures and artifact paths
   before comparing reconstruction quality.
+
+## 2026-08-09 - Depthkit four-view next-action correction
+
+- Preserve `xuelong_upright_4v_full_validated` and its generated 2D/3D
+  artifacts as the distorted-RGB four-view reference; do not rerun or overwrite
+  that tag.
+- Next action: prepare a new capture with rectified RGB footage and matching
+  intrinsics, run eight-view upstream evidence under a new tag, and reuse that
+  evidence for nested six- and four-view `ma_3d` tags. Compare those controlled
+  results with the preserved reference and record new artifact paths and
+  per-camera reprojection failures in a dated entry.

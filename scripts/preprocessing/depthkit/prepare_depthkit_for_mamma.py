@@ -636,7 +636,14 @@ def validate_synchronized_streams(
     takes: dict[str, list[CameraStream]],
 ) -> None:
     for name, cameras in takes.items():
+        reference_offset = stream_sync_offset(cameras[0].stream)
         for camera in cameras:
+            offset = stream_sync_offset(camera.stream)
+            if offset != reference_offset:
+                raise ConversionError(
+                    f"Recording {name!r} has mismatched synchronization offsets: "
+                    f"{camera.name} reports {offset}, expected {reference_offset}"
+                )
             dropped_raw = camera.stream.get("numDroppedFrames", 0)
             if isinstance(dropped_raw, bool):
                 raise ConversionError(
@@ -661,6 +668,34 @@ def validate_synchronized_streams(
                     f"{int(dropped)} dropped capture frame(s); MAMMA aligns views "
                     "by frame index, so repair the synchronized timeline first"
                 )
+
+
+def stream_sync_offset(stream: dict[str, Any]) -> Fraction:
+    offset = stream.get("syncOffset")
+    if offset is None:
+        return Fraction(0, 1)
+    if not isinstance(offset, dict):
+        raise ConversionError(f"Invalid stream synchronization offset: {offset!r}")
+    negative = offset.get("negative", False)
+    ticks_raw = offset.get("ticks", 0)
+    timebase_raw = offset.get("timebase", 1)
+    if (
+        not isinstance(negative, bool)
+        or isinstance(ticks_raw, bool)
+        or isinstance(timebase_raw, bool)
+    ):
+        raise ConversionError(f"Invalid stream synchronization offset: {offset!r}")
+    try:
+        ticks = int(ticks_raw)
+        timebase = int(timebase_raw)
+    except (TypeError, ValueError) as exc:
+        raise ConversionError(
+            f"Invalid stream synchronization offset: {offset!r}"
+        ) from exc
+    if ticks != ticks_raw or timebase != timebase_raw or ticks < 0 or timebase <= 0:
+        raise ConversionError(f"Invalid stream synchronization offset: {offset!r}")
+    value = Fraction(ticks, timebase)
+    return -value if negative else value
 
 
 def validate_common_source_fps(

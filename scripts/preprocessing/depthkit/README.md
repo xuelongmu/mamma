@@ -49,6 +49,8 @@ dropped capture frames because truncation cannot repair a mid-stream timeline
 shift. It also rejects every nonzero distortion coefficient outside
 k1/k2/p1/p2/k3 support. All selected cameras and recordings must report one
 common source FPS before the adapter applies an all-stream target rate.
+Camera `syncOffset` values must also be equivalent within each take; differing
+offsets require timeline repair before conversion.
 
 Use `--recordings <name> [<name> ...]` to select takes. When changing only a
 calibration-convention option after videos have already been prepared, pass
