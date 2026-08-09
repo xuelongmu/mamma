@@ -52,7 +52,7 @@ class MaVisBuilder(StepBuilder):
         argv += self._undistort_flag()
         flags = self.flags
         if not any(flag == "--fps" or flag.startswith("--fps=") for flag in flags):
-            capture_fps = self.global_cfg.get("cam_fps")
+            capture_fps = self.effective_cam_fps
             if capture_fps is not None:
                 argv += ["--fps", str(capture_fps)]
         argv += flags

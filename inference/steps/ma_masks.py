@@ -64,7 +64,7 @@ class MaMasksBuilder(StepBuilder):
             or flag.startswith("--masked_outputs_fps=")
             for flag in flags
         ):
-            capture_fps = self.global_cfg.get("cam_fps")
+            capture_fps = self.effective_cam_fps
             if capture_fps is not None:
                 argv += ["--preview_fps", str(capture_fps)]
         argv += flags

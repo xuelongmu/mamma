@@ -41,7 +41,8 @@ constant-frame-rate output. Explicit `copy` and `symlink` modes cannot change
 frame rate. Fractional source rates are conformed to the
 nearest integer; an explicit `--fps` must be a positive integer. Visualization
 and mask diagnostic videos inherit the generated capture rate when their
-presets do not override it.
+presets do not override it. An explicit `ma_cap.flags --fps` value becomes the
+effective rate inherited by both downstream outputs.
 `--rotate ccw`, `cw`, or `180`
 rotates every frame and transforms intrinsics, tangential distortion,
 resolution, and extrinsics so projection geometry remains unchanged. The
@@ -71,6 +72,9 @@ camera destinations before preparing the first video, so a late conflict cannot
 leave published metadata beside partially replaced footage.
 Overwrite mode likewise validates every requested effective video mode and
 destination type before withdrawing the existing descriptors.
+Both overwrite modes reject recording/video directory symlinks that resolve
+outside the selected output tree before creating directories or changing
+descriptors.
 
 Run a quick end-to-end solve:
 

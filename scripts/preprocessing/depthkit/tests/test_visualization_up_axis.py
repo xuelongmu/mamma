@@ -19,7 +19,7 @@ from visualization.rerun_log import compute_floor_height
 
 
 class NegativeUpAxisTests(unittest.TestCase):
-    def test_builder_derives_fps_from_materialized_capture(self):
+    def test_builder_honors_materialized_ma_cap_fps_override(self):
         with tempfile.TemporaryDirectory() as directory:
             root = Path(directory)
             preset = root / "preset.json"
@@ -28,6 +28,7 @@ class NegativeUpAxisTests(unittest.TestCase):
                 json.dumps(
                     {
                         "global": {"out_dir": "output"},
+                        "ma_cap": {"flags": ["--fps 20"]},
                         "ma_masks": {
                             "script": "run_ma_masks.py",
                             "flags": [],
@@ -62,9 +63,31 @@ class NegativeUpAxisTests(unittest.TestCase):
                     config["ma_masks"], config["global"], "tag"
                 ).python_argv("take")
         fps_index = arguments.index("--fps")
-        self.assertEqual(arguments[fps_index + 1], "25")
+        self.assertEqual(arguments[fps_index + 1], "20")
         preview_fps_index = mask_arguments.index("--preview_fps")
-        self.assertEqual(mask_arguments[preview_fps_index + 1], "25")
+        self.assertEqual(mask_arguments[preview_fps_index + 1], "20")
+
+    def test_materialized_capture_fps_is_default_effective_rate(self):
+        with tempfile.TemporaryDirectory() as directory:
+            root = Path(directory)
+            preset = root / "preset.json"
+            capture = root / "capture.json"
+            preset.write_text(
+                json.dumps({"global": {"out_dir": "output"}}),
+                encoding="utf-8",
+            )
+            capture.write_text(
+                json.dumps(
+                    {
+                        "cam_fps": 25,
+                        "cams": ["cam_01"],
+                        "sequences": {"000": {"name": "take"}},
+                    }
+                ),
+                encoding="utf-8",
+            )
+            config = materialize_run_config(str(preset), str(capture))
+        self.assertEqual(config["global"]["effective_cam_fps"], 25)
 
     def test_pipeline_maps_negative_y_to_signed_axis(self):
         self.assertEqual(_UP_AXIS_MAP["-y"], (1, -1))

@@ -216,6 +216,33 @@ class CalibrationTests(unittest.TestCase):
 
 
 class PublicationTests(unittest.TestCase):
+    def test_preflight_rejects_recording_symlink_outside_output(self):
+        with tempfile.TemporaryDirectory() as directory:
+            root = Path(directory)
+            source = root / "source.mp4"
+            source.write_bytes(b"video")
+            for preflight in (
+                converter.preflight_non_overwrite,
+                converter.preflight_overwrite,
+            ):
+                with self.subTest(preflight=preflight.__name__):
+                    output = root / preflight.__name__
+                    external = root / f"external_{preflight.__name__}"
+                    output.mkdir()
+                    external.mkdir()
+                    (output / "take").symlink_to(external, target_is_directory=True)
+                    with self.assertRaisesRegex(
+                        converter.ConversionError, "escapes the output"
+                    ):
+                        preflight(
+                            output,
+                            {"take": [camera_stream(source)]},
+                            mode="copy",
+                            target_fps=30,
+                            rotation="none",
+                        )
+                    self.assertFalse((external / "videos").exists())
+
     def test_overwrite_preflight_preserves_descriptors_on_invalid_mode(self):
         with tempfile.TemporaryDirectory() as directory:
             output = Path(directory)

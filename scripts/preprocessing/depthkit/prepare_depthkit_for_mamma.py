@@ -558,6 +558,7 @@ def preflight_non_overwrite(
     target_fps: float,
     rotation: str,
 ) -> None:
+    preflight_destination_containment(output, takes)
     for name in ("calibration.json", "capture.json", "conversion_manifest.json"):
         descriptor = output / name
         if os.path.lexists(descriptor):
@@ -593,6 +594,7 @@ def preflight_overwrite(
     target_fps: float,
     rotation: str,
 ) -> None:
+    preflight_destination_containment(output, takes)
     for recording_name, cameras in takes.items():
         for camera in cameras:
             effective_video_mode(camera, mode, target_fps, rotation)
@@ -612,6 +614,22 @@ def preflight_overwrite(
                 raise ConversionError(
                     f"Expected a temporary video file but found a directory: {temporary}"
                 )
+
+
+def preflight_destination_containment(
+    output: Path,
+    takes: dict[str, list[CameraStream]],
+) -> None:
+    output_root = output.resolve()
+    for recording_name, cameras in takes.items():
+        for camera in cameras:
+            destination = output / recording_name / "videos" / f"{camera.name}.mp4"
+            try:
+                destination.parent.resolve().relative_to(output_root)
+            except (OSError, RuntimeError, ValueError) as exc:
+                raise ConversionError(
+                    f"Video destination escapes the output directory: {destination}"
+                ) from exc
 
 
 def sha256_file(path: Path) -> str:
@@ -1023,6 +1041,7 @@ def main() -> None:
             args.rotate,
         )
     if args.calibration_only:
+        preflight_destination_containment(output, takes)
         prior_manifest = validate_calibration_only_manifest(
             output,
             args.rotate,

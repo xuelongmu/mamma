@@ -78,7 +78,9 @@ capture when the source rate already matches the requested output; explicit
 `copy` and `symlink` modes cannot change frame rate. Fractional source rates are
 conformed to the nearest integral rate;
 an explicit `--fps` must be a positive integer. The generated capture rate is
-also used automatically for MAMMA visualization playback. Any selected color
+also used automatically for MAMMA visualization playback. If `ma_cap.flags`
+contains a later `--fps` override, mask previews and visualization inherit that
+effective capture-stage rate. Any selected color
 stream that reports dropped capture frames is rejected because MAMMA aligns
 views by frame index. Masked-output and collage diagnostic videos inherit the
 same capture rate. Every selected camera and recording must report one common
@@ -96,6 +98,9 @@ provenance. Only after every reused video passes does calibration-only
 overwrite withdraw the old descriptor set and publish replacement metadata.
 Reuse also requires the prepared path, frame count, size, and modification-time
 fingerprint recorded by the prior manifest to match the destination video.
+Preparation rejects any existing recording or `videos` directory symlink whose
+resolved destination would place generated videos outside the selected output
+tree.
 
 ## Validate before MAMMA
 

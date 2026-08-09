@@ -100,5 +100,9 @@ machine-local progress belong in [`docs/status.md`](docs/status.md).
 - Overwrite requests preflight every effective video mode before descriptor
   invalidation, including copy/link FPS compatibility, and calibration-only
   reuse verifies prepared-video identity.
+- Depthkit output preflight rejects recording/video directory symlinks that
+  resolve outside the selected output tree.
+- Mask previews and visualization inherit an explicit capture-stage FPS
+  override instead of reverting to the source capture rate.
 - Share-video visibility gating tracks each reconstructed body independently.
 - Share-video camera selections reject duplicate names before visibility counts.
