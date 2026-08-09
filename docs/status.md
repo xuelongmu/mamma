@@ -196,3 +196,41 @@ camera 05 remained an isolated high-error view for the second body.
 - Next action: rerun this frame-0 check into the repository's gitignored `tmp/`
   directory after renderer changes, add middle/end frame checks for framing and
   synchronization, and only then render a full share video.
+
+## 2026-08-09 - Source pixel-space contract and distortion A/B
+
+- Evaluated whether lens metadata alone justifies undistorting delivered RGB
+  before detection. It does not: calibration coefficients describe the lens
+  model, while an exporter may already have rectified the video. The pipeline
+  now requires an independent `source_pixel_space` declaration and keeps the
+  pinhole-only optimizer behind a canonical-geometry guard.
+- MammaEval input: `230929_WhiteRabbit_CatchBall_50048_1`, frames 60-89,
+  cameras `IOI_01, IOI_05, IOI_09, IOI_13`. Both arms ran SAM2, MammaNet, and
+  the same optimizer settings. Preserving the declared pinhole footage beat a
+  forced second remap: PVE 15.015 vs 15.616 mm, MPJPE 15.433 vs 16.164 mm, and
+  observed epipolar median 1.823 vs 2.322 px. The forced remap increased outer
+  radial reprojection error from 4.729 to 7.080 px. This capture is therefore
+  declared `pinhole_undistorted`.
+- Depthkit inputs: recordings
+  `DELL_001_001_02_Xuelong_04_10_16_38_34` and
+  `DELL_001_001_06_Xuelong_04_10_18_05_51`, frames 300-329, using corrected
+  color-to-depth extrinsics. Nested camera sets were `cam_01`-`cam_04` (4),
+  plus `cam_06, cam_08` (6), plus `cam_09, cam_10` (8). The remap arm reran
+  masks and landmarks; both arms completed all 12 two-stage 3D fits.
+- Depthkit did not show a repeatable improvement. Recording two was nearly
+  unchanged: 8-view epipolar medians were 129.304 px preserved and 129.873 px
+  remapped. Recording one degraded at 6/8 views after several remapped-view
+  detections diverged; its 8-view triangulation median rose from 125.188 to
+  177.622 px. The very large residuals in both arms show that calibration/pose
+  convention and cross-view detection quality dominate any lens correction.
+  Depthkit has no external 3D ground truth here, so saved duplicate `gt_*`
+  arrays were not used as evaluation targets.
+- Disposable artifacts and complete JSON metrics are under
+  `tmp/issue3-expanded/` and `tmp/issue3-depthkit/`; they remain ignored and
+  are not uploaded. Validation passed 105 focused tests, 33 smoke checks with
+  zero failures, compile-all, CLI help checks, and the real-data runs above.
+- Decision: do not let the Depthkit adapter guess `raw_distorted`; leave its
+  source space unknown until a reprojection gate and exporter provenance
+  establish it. Next, fix the dominant Depthkit calibration/detection issue,
+  then repeat the same distortion A/B with external 3D ground truth or a
+  calibrated target before changing that declaration.

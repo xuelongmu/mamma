@@ -7,6 +7,11 @@ machine-local progress belong in [`docs/status.md`](docs/status.md).
 
 ### Added
 
+- An explicit `source_pixel_space` capture contract, propagated through
+  `ma_cap`, masks, dense landmarks, fitting guards, visualization, and geometry
+  manifests.
+- Brown/radtan and Vicon frame remapping at the shared frame-source boundary,
+  with cross-stage calibration and pixel-space cache validation.
 - Agent and contributor guidance for research logging, pull requests, and
   functionally dependent stacked pull requests.
 - An explicit safeguard that issues and pull requests must target the fork,
@@ -26,6 +31,11 @@ machine-local progress belong in [`docs/status.md`](docs/status.md).
 
 ### Changed
 
+- `distortion_mode: auto` now follows the declared source pixel space instead
+  of inferring frame geometry from lens coefficients; ambiguous non-zero
+  calibrations fail with an actionable declaration error.
+- The released WhiteRabbit capture is declared `pinhole_undistorted` based on
+  a 30-frame, four-camera ground-truth comparison.
 - Expanded own-footage guidance for synchronization, camera coverage,
   calibration conventions, and the released iPhone example.
 - Rerun visualization now records the configured world up axis at the scene
@@ -33,6 +43,9 @@ machine-local progress belong in [`docs/status.md`](docs/status.md).
 
 ### Fixed
 
+- The pinhole-only optimizer rejects declared raw or unknown 2D observations,
+  and explicit remapping rejects already-undistorted sources to prevent a
+  silent double-remap.
 - X-up and Y-up reconstructions no longer appear sideways in Rerun when the
   corresponding visualization up-axis option is used.
 - Share-video filmstrips can preserve the source-frame offset for sliced
