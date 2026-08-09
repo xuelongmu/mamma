@@ -221,3 +221,18 @@ camera 05 remained an isolated high-error view for the second body.
   comparisons.
 - Source footage, conformed captures, reconstructions, and rendered media
   remain local generated artifacts and are not committed.
+
+## 2026-08-08 - Depthkit nested 6/8-view extension
+
+- Added nested six-view cameras `01, 02, 03, 04, 06, 08` and eight-view
+  cameras `01, 02, 03, 04, 06, 08, 09, 10`.
+- The additions fill missing horizontal rig azimuths with wide-baseline cameras.
+  Camera 07 remains excluded because its 9.86 px calibration disagreement was
+  the clearest 10-camera outlier; camera 05 remains outside the baseline because
+  it is a closer, elevated view that does not expand horizontal coverage.
+- Added quick and full presets for both camera counts. These configurations are
+  materialized and validated but the six- and eight-view full reconstructions
+  have not yet completed, so no comparative result is claimed.
+- Standalone runs recompute upstream evidence. A controlled 4/6/8-view ablation
+  must reuse compatible masks, identities, and 2D landmarks from the largest
+  set and vary only the cameras used by the 3D optimizer.

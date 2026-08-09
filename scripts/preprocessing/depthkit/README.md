@@ -55,9 +55,18 @@ micromamba run -n mamma python -m inference run \
   --out-tag my_depthkit_first4 -v
 ```
 
-The quick preset samples frames 300-329 and uses `cam_01` through `cam_04`.
-`configs/experiments/depthkit-full-first4.yaml` processes the same camera set
-for every available frame.
+The quick presets sample frames 300-329. Matching full presets process every
+available frame:
+
+| Views | Quick preset | Full preset |
+| ---: | --- | --- |
+| 4 | `depthkit-quick-first4.yaml` | `depthkit-full-first4.yaml` |
+| 6 | `depthkit-quick-6view.yaml` | `depthkit-full-6view.yaml` |
+| 8 | `depthkit-quick-8view.yaml` | `depthkit-full-8view.yaml` |
+
+The six-view set adds `cam_06` and `cam_08` to the validated first four.
+The eight-view set then adds `cam_09` and `cam_10`. See the runbook for the
+rig-coverage rationale and controlled-ablation caveat.
 
 Tests:
 

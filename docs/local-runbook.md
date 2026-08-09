@@ -152,7 +152,7 @@ For SJTU-specific subsets and cache reuse, see
 [`sjtu-sports.md`](sjtu-sports.md).
 
 For Depthkit/Scatter calibration conversion, footage conformance, and the
-validated Xuelong four-view workflow, see [`depthkit.md`](depthkit.md).
+validated Xuelong 4/6/8-view workflow, see [`depthkit.md`](depthkit.md).
 
 ## Visual validation
 

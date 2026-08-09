@@ -2,7 +2,7 @@
 
 This runbook covers calibrated multi-camera RGB recordings exported in a
 Depthkit/Scatter project. It records the calibration conversion validated on
-the 10-camera Xuelong capture, the four-view reconstruction methodology, and
+the 10-camera Xuelong capture, the 4/6/8-view reconstruction methodology, and
 the commands needed to reproduce the result without committing source footage.
 
 ## Source layout
@@ -93,45 +93,69 @@ undistort every RGB stream first and write the corresponding rectified
 intrinsics. The Xuelong result below used the distorted RGB frames directly;
 that limitation should remain attached to comparisons.
 
-## Run the four-view reconstruction
+## Run the 4/6/8-view reconstructions
 
-The first four cameras were more stable than the initial 10-view solve. Start
-with the tested 30-frame interval:
+The camera sets are nested so every larger solve preserves the smaller set:
+
+| Views | Cameras | Selection rationale |
+| ---: | --- | --- |
+| 4 | `cam_01 cam_02 cam_03 cam_04` | Validated full-clip baseline |
+| 6 | add `cam_06 cam_08` | Fill the 44-degree and 90-degree rig azimuths with wide-baseline cameras |
+| 8 | add `cam_09 cam_10` | Fill the 227-degree and 0-degree gaps while retaining wide baselines |
+
+This selection excludes camera 07, whose 9.86 px calibration disagreement was
+the clearest outlier in the 10-camera check. Cameras 05 and 07 are both closer
+to the capture-volume centroid than the selected additions; they remain useful
+follow-up candidates for studying elevated viewpoints, not part of this nested
+baseline.
+
+Start each camera count with its 30-frame interval:
 
 ```bash
 LD_LIBRARY_PATH=/home/xuelong/micromamba/envs/mamma/lib \
 __EGL_VENDOR_LIBRARY_DIRS=/home/xuelong/micromamba/envs/mamma/share/glvnd/egl_vendor.d \
 MPLBACKEND=Agg \
 micromamba run -n mamma python -m inference run \
-  --cfg configs/experiments/depthkit-quick-first4.yaml \
+  --cfg configs/experiments/depthkit-quick-<subset>.yaml \
   --capture data/xuelong_depthkit/capture.json \
-  --out-tag xuelong_depthkit_quick_first4 -v
+  --out-tag xuelong_depthkit_quick_<views>v -v
 ```
+
+Use `first4`, `6view`, or `8view` for `<subset>`, and `4`, `6`, or
+`8` for `<views>`.
 
 After masks, identities, 2D landmarks, reprojections, scale, and orientation
-look plausible, process every frame:
+look plausible, process every frame with the matching full preset:
 
 ```bash
 LD_LIBRARY_PATH=/home/xuelong/micromamba/envs/mamma/lib \
 __EGL_VENDOR_LIBRARY_DIRS=/home/xuelong/micromamba/envs/mamma/share/glvnd/egl_vendor.d \
 MPLBACKEND=Agg \
 micromamba run -n mamma python -m inference run \
-  --cfg configs/experiments/depthkit-full-first4.yaml \
+  --cfg configs/experiments/depthkit-full-<subset>.yaml \
   --capture data/xuelong_depthkit/capture.json \
-  --out-tag xuelong_depthkit_full_first4 -v
+  --out-tag xuelong_depthkit_full_<views>v -v
 ```
 
-The tested full runs completed 827 frames for the `..._02_...` recording and
+Only the four-view full baseline has completed validation so far. It processed
+827 frames for the `..._02_...` recording and
 1,203 frames for the `..._06_...` recording with finite saved SMPL-X vertices.
 In the short validation interval, per-camera reprojection errors were
 `22, 7, 11, 15 px` and `10, 5, 6, 14 px`, respectively.
+
+The standalone presets are useful for producing each deliverable, but their
+upstream masks, identities, and 2D landmarks are recomputed. For a controlled
+camera-count ablation, run the eight-view upstream stages once, reuse compatible
+evidence for the common cameras, and vary only the camera list passed to
+`run_ma_3d.py`. Use distinct 3D output tags and report any per-camera outlier
+instead of attributing every difference to view count.
 
 ## Render both 3D perspectives with the source views
 
 Depthkit's converted world is Y-down. The established share renderer converts
 it to a right-handed Y-up display when passed `--up-axis=-y`. A second azimuth
 places the opposite side of the performer beside the first 3D view, while the
-four synchronized source cameras remain in the bottom filmstrip:
+selected synchronized source cameras remain in the bottom filmstrip:
 
 ```bash
 PYOPENGL_PLATFORM=egl \
@@ -141,18 +165,19 @@ micromamba run -n mamma python scripts/render_share_video.py \
   --ma-3d-dir output/ma_3d/<tag>/<capture>/<sequence> \
   --ma-2d-dir output/ma_2d/<tag>/<capture>/<sequence> \
   --videos-dir data/xuelong_depthkit/<sequence>/videos \
-  --cams cam_01 cam_02 cam_03 cam_04 \
+  --cams cam_01 cam_02 cam_03 cam_04 cam_06 cam_08 cam_09 cam_10 \
   --up-axis=-y \
   --azimuth-degrees 45 \
   --secondary-azimuth-degrees 225 \
   --fps 30 \
   --output output/share/<tag>.mp4 \
-  --title "Xuelong reconstruction - four views"
+  --title "Xuelong reconstruction - eight views"
 ```
 
 Supplying `--ma-2d-dir` hides the SMPL-X mesh on frames where fewer than two
-selected cameras contain useful landmark visibility. It preserves the full
-timeline and filmstrip, avoiding unconstrained entrance/exit poses without
+selected cameras contain useful landmark visibility. Pass the exact camera set
+used by the corresponding 4-, 6-, or 8-view solve. The renderer preserves the
+full timeline and filmstrip, avoiding unconstrained entrance/exit poses without
 trimming the clip.
 
 Use [`viewer.md`](viewer.md) for source-frame offsets, deliverable validation,
