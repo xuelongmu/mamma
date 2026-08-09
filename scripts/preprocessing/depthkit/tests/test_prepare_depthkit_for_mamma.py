@@ -127,12 +127,24 @@ class CalibrationTests(unittest.TestCase):
         self.assertEqual(converter.distortion_coefficients(intrinsics), [1, 2, 4, 5, 3])
 
     def test_nonzero_rational_tail_is_rejected(self):
-        intrinsics = {
-            "distortionRadial": [1, 2, 3, 4, 0, 0],
-            "distortionTangential": [0, 0],
-        }
-        with self.assertRaises(converter.ConversionError):
-            converter.distortion_coefficients(intrinsics)
+        unsupported = (
+            {
+                "distortionRadial": [1, 2, 3, 4, 0, 0],
+                "distortionTangential": [0, 0],
+            },
+            {
+                "distortionRadial": [1, 2, 3, 0, 0, 0, 4],
+                "distortionTangential": [0, 0],
+            },
+            {
+                "distortionRadial": [1, 2, 3],
+                "distortionTangential": [0, 0, 4],
+            },
+        )
+        for intrinsics in unsupported:
+            with self.subTest(intrinsics=intrinsics):
+                with self.assertRaises(converter.ConversionError):
+                    converter.distortion_coefficients(intrinsics)
 
     def test_ccw_rotation_transforms_pixels_and_camera_model_consistently(self):
         calibration = {
@@ -185,6 +197,17 @@ class CalibrationTests(unittest.TestCase):
 
 
 class PublicationTests(unittest.TestCase):
+    def test_recording_with_dropped_frames_is_rejected(self):
+        camera = camera_stream(Path("unused"))
+        dropped_camera = converter.CameraStream(
+            **{
+                **camera.__dict__,
+                "stream": {"numDroppedFrames": 1},
+            }
+        )
+        with self.assertRaisesRegex(converter.ConversionError, "dropped capture"):
+            converter.validate_synchronized_streams({"take": [dropped_camera]})
+
     def test_copy_overwrite_publishes_complete_replacement(self):
         with tempfile.TemporaryDirectory() as directory:
             root = Path(directory)

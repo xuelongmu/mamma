@@ -75,7 +75,10 @@ when ffprobe reports H.264/yuv420p with matching nominal and average integral
 frame rates and no rotation is needed. It otherwise re-encodes
 constant-frame-rate H.264/yuv420p footage. Use `copy` for a self-contained
 capture. Fractional source rates are conformed to the nearest integral rate;
-an explicit `--fps` must be a positive integer.
+an explicit `--fps` must be a positive integer. The generated capture rate is
+also used automatically for MAMMA visualization playback. Any selected color
+stream that reports dropped capture frames is rejected because MAMMA aligns
+views by frame index.
 
 Use `--recordings <name> [<name> ...]` to validate or prepare selected takes.
 If only a calibration convention changes after videos are prepared, use
@@ -97,9 +100,10 @@ For every selected camera, verify:
 5. low epipolar disagreement on matched RGB features; and
 6. usable subject coverage throughout the requested interval.
 
-The converter preserves the Brown-Conrady distortion coefficients, but the
-current MAMMA optimization path does not consume them. For a rigorous result,
-undistort every RGB stream first and write the corresponding rectified
+The converter preserves the supported Brown-Conrady k1/k2/p1/p2/k3
+coefficients and rejects nonzero unsupported tails, but the current MAMMA
+optimization path does not consume even the retained terms. For a rigorous
+result, undistort every RGB stream first and write the corresponding rectified
 intrinsics. The Xuelong result below used the distorted RGB frames directly;
 that limitation should remain attached to comparisons.
 

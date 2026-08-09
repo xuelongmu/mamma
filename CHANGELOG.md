@@ -82,5 +82,9 @@ machine-local progress belong in [`docs/status.md`](docs/status.md).
   published descriptors.
 - Depthkit calibration-only reuse verifies the source project, calibration,
   recordings, cameras, and video fingerprints before retaining existing pixels.
+- Depthkit conversion rejects reported dropped frames and unsupported nonzero
+  distortion tails before publishing a frame-index-aligned capture.
+- Visualization derives its FPS from the bound capture unless explicitly
+  overridden, so non-30-fps captures keep the correct playback speed.
 - Share-video visibility gating tracks each reconstructed body independently.
 - Share-video camera selections reject duplicate names before visibility counts.

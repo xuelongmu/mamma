@@ -57,5 +57,4 @@ ma_vis:
   - --no-rerun-images
   - --skip-overlay
   - --up-axis=-y
-  - --fps 30
   undistort: false

@@ -44,6 +44,7 @@ pointer-style error messages so users can fix their config quickly.
 from __future__ import annotations
 
 import json
+import math
 import os
 import warnings
 from typing import List
@@ -309,6 +310,24 @@ def materialize_run_config(
     cfg.setdefault("global", {})
     g = cfg["global"]
     g["capture_json"] = capture_path
+    if capture_data.get("cam_fps") is not None:
+        raw_capture_fps = capture_data["cam_fps"]
+        try:
+            capture_fps = float(raw_capture_fps)
+        except (TypeError, ValueError) as exc:
+            raise TaskConfigError(
+                f"capture.cam_fps: expected a positive integer, got {raw_capture_fps!r}"
+            ) from exc
+        if (
+            isinstance(raw_capture_fps, bool)
+            or not math.isfinite(capture_fps)
+            or capture_fps <= 0
+            or not capture_fps.is_integer()
+        ):
+            raise TaskConfigError(
+                f"capture.cam_fps: expected a positive integer, got {raw_capture_fps!r}"
+            )
+        g["cam_fps"] = int(capture_fps)
 
     if seq_ids is None and seq_names is not None:
         seq_ids = _seq_ids_from_names_in_data(capture_data, seq_names)

@@ -1,16 +1,54 @@
 from __future__ import annotations
 
+import json
+import tempfile
 import unittest
+from pathlib import Path
 from types import SimpleNamespace
 
 import numpy as np
 
+from inference.config import materialize_run_config
+from inference.steps.ma_vis import MaVisBuilder
 from visualization.cli import _build_parser
 from visualization.pipeline import _UP_AXIS_MAP
 from visualization.rerun_log import compute_floor_height
 
 
 class NegativeUpAxisTests(unittest.TestCase):
+    def test_builder_derives_fps_from_materialized_capture(self):
+        with tempfile.TemporaryDirectory() as directory:
+            root = Path(directory)
+            preset = root / "preset.json"
+            capture = root / "capture.json"
+            preset.write_text(
+                json.dumps(
+                    {
+                        "global": {"out_dir": "output"},
+                        "ma_vis": {
+                            "script": "run_ma_vis.py",
+                            "flags": ["--rerun-light"],
+                        },
+                    }
+                ),
+                encoding="utf-8",
+            )
+            capture.write_text(
+                json.dumps(
+                    {
+                        "cam_fps": 25.0,
+                        "cams": ["cam_01"],
+                        "sequences": {"000": {"name": "take"}},
+                    }
+                ),
+                encoding="utf-8",
+            )
+            config = materialize_run_config(str(preset), str(capture))
+            builder = MaVisBuilder(config["ma_vis"], config["global"], "tag")
+            arguments = builder.python_argv("take")
+        fps_index = arguments.index("--fps")
+        self.assertEqual(arguments[fps_index + 1], "25")
+
     def test_pipeline_maps_negative_y_to_signed_axis(self):
         self.assertEqual(_UP_AXIS_MAP["-y"], (1, -1))
         self.assertEqual(_UP_AXIS_MAP["y-down"], (1, -1))

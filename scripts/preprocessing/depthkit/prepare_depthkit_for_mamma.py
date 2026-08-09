@@ -303,15 +303,17 @@ def gather_recording(
 def distortion_coefficients(intrinsics: dict[str, Any]) -> list[float]:
     radial = [float(value) for value in intrinsics.get("distortionRadial", [])]
     tangential = [float(value) for value in intrinsics.get("distortionTangential", [])]
-    radial += [0.0] * (6 - len(radial))
-    tangential += [0.0] * (2 - len(tangential))
     if not all(math.isfinite(value) for value in [*radial, *tangential]):
         raise ConversionError("Camera distortion contains a non-finite value")
-    if any(abs(value) > 1e-10 for value in radial[3:6]):
+    if any(abs(value) > 1e-10 for value in radial[3:]) or any(
+        abs(value) > 1e-10 for value in tangential[2:]
+    ):
         raise ConversionError(
-            "MAMMA's OpenCV JSON accepts k1,k2,p1,p2,k3, but this Depthkit "
-            "profile has non-zero rational-model k4/k5/k6 coefficients"
+            "MAMMA's OpenCV JSON accepts only k1,k2,p1,p2,k3, but this "
+            "Depthkit profile has non-zero unsupported distortion coefficients"
         )
+    radial += [0.0] * max(0, 3 - len(radial))
+    tangential += [0.0] * max(0, 2 - len(tangential))
     return [radial[0], radial[1], tangential[0], tangential[1], radial[2]]
 
 
@@ -556,6 +558,37 @@ def validate_recording_names(recording_names: list[str]) -> None:
             )
 
 
+def validate_synchronized_streams(
+    takes: dict[str, list[CameraStream]],
+) -> None:
+    for name, cameras in takes.items():
+        for camera in cameras:
+            dropped_raw = camera.stream.get("numDroppedFrames", 0)
+            if isinstance(dropped_raw, bool):
+                raise ConversionError(
+                    f"Invalid dropped-frame count for {name!r}/{camera.name}: "
+                    f"{dropped_raw!r}"
+                )
+            try:
+                dropped = float(dropped_raw)
+            except (TypeError, ValueError) as exc:
+                raise ConversionError(
+                    f"Invalid dropped-frame count for {name!r}/{camera.name}: "
+                    f"{dropped_raw!r}"
+                ) from exc
+            if not math.isfinite(dropped) or dropped < 0 or not dropped.is_integer():
+                raise ConversionError(
+                    f"Invalid dropped-frame count for {name!r}/{camera.name}: "
+                    f"{dropped_raw!r}"
+                )
+            if dropped > 0:
+                raise ConversionError(
+                    f"Recording {name!r}/{camera.name} reports "
+                    f"{int(dropped)} dropped capture frame(s); MAMMA aligns views "
+                    "by frame index, so repair the synchronized timeline first"
+                )
+
+
 def validate_calibration_only_manifest(
     output: Path,
     rotation: str,
@@ -733,6 +766,7 @@ def main() -> None:
     takes = {
         name: gather_recording(project_root, project, name) for name in recording_names
     }
+    validate_synchronized_streams(takes)
     first = next(iter(takes.values()))
     expected_rig = [(camera.name, camera.device_id) for camera in first]
     for name, cameras in takes.items():
