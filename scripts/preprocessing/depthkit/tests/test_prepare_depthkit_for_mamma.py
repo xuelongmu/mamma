@@ -238,6 +238,32 @@ class PublicationTests(unittest.TestCase):
                 )
             self.assertTrue(all((output / name).is_file() for name in names))
 
+    def test_overwrite_preflight_preserves_descriptors_on_fps_mismatch(self):
+        with tempfile.TemporaryDirectory() as directory:
+            output = Path(directory)
+            names = (
+                "calibration.json",
+                "capture.json",
+                "conversion_manifest.json",
+            )
+            for name in names:
+                (output / name).write_text("old", encoding="utf-8")
+            source = output / "source.mp4"
+            source.write_bytes(b"video")
+            for mode in ("copy", "symlink"):
+                with self.subTest(mode=mode):
+                    with self.assertRaisesRegex(
+                        converter.ConversionError, "cannot change"
+                    ):
+                        converter.preflight_overwrite(
+                            output,
+                            {"take": [camera_stream(source)]},
+                            mode=mode,
+                            target_fps=25,
+                            rotation="none",
+                        )
+                    self.assertTrue(all((output / name).is_file() for name in names))
+
     def test_calibration_only_rejects_changed_prepared_video(self):
         with tempfile.TemporaryDirectory() as directory:
             destination = Path(directory) / "prepared.mp4"

@@ -35,8 +35,10 @@ micromamba run -n mamma python scripts/preprocessing/depthkit/prepare_depthkit_f
 `--video-mode auto` (the default) symlinks only footage whose ffprobe metadata
 reports H.264/yuv420p with matching nominal and average integral frame rates
 when no rotation is needed. It re-encodes all other sources. Use `copy` for a
-self-contained dataset or `reencode` to force H.264/yuv420p
-constant-frame-rate output. Fractional source rates are conformed to the
+self-contained dataset when the source and output rates match, or `reencode` to
+force H.264/yuv420p
+constant-frame-rate output. Explicit `copy` and `symlink` modes cannot change
+frame rate. Fractional source rates are conformed to the
 nearest integer; an explicit `--fps` must be a positive integer. Visualization
 and mask diagnostic videos inherit the generated capture rate when their
 presets do not override it.

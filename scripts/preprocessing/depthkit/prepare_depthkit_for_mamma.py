@@ -474,6 +474,15 @@ def effective_video_mode(
             f"--video-mode {actual_mode} cannot apply --rotate {rotation}; "
             "use auto or reencode"
         )
+    if actual_mode in ("symlink", "copy") and not math.isclose(
+        camera.fps,
+        target_fps,
+        abs_tol=1e-3,
+    ):
+        raise ConversionError(
+            f"--video-mode {actual_mode} cannot change {camera.name} from "
+            f"{camera.fps:g} to {target_fps:g} fps; use auto or reencode"
+        )
     return actual_mode
 
 

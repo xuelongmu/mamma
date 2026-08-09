@@ -74,7 +74,9 @@ The adapter writes `calibration.json`, `capture.json`, and an auditable
 when ffprobe reports H.264/yuv420p with matching nominal and average integral
 frame rates and no rotation is needed. It otherwise re-encodes
 constant-frame-rate H.264/yuv420p footage. Use `copy` for a self-contained
-capture. Fractional source rates are conformed to the nearest integral rate;
+capture when the source rate already matches the requested output; explicit
+`copy` and `symlink` modes cannot change frame rate. Fractional source rates are
+conformed to the nearest integral rate;
 an explicit `--fps` must be a positive integer. The generated capture rate is
 also used automatically for MAMMA visualization playback. Any selected color
 stream that reports dropped capture frames is rejected because MAMMA aligns
