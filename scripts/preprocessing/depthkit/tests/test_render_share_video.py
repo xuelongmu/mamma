@@ -22,8 +22,10 @@ class WorldAxisTests(unittest.TestCase):
             "x": [1.0, 0.0, 0.0],
             "y": [0.0, 1.0, 0.0],
             "-y": [0.0, -1.0, 0.0],
+            "y-down": [0.0, -1.0, 0.0],
             "z": [0.0, 0.0, 1.0],
             "-z": [0.0, 0.0, -1.0],
+            "z-down": [0.0, 0.0, -1.0],
         }
         for axis, world_up in world_up_vectors.items():
             with self.subTest(axis=axis):
@@ -34,6 +36,17 @@ class WorldAxisTests(unittest.TestCase):
 
 
 class VisibilityTests(unittest.TestCase):
+    def test_mesh_gate_rejects_duplicate_camera_names(self):
+        with self.assertRaisesRegex(ValueError, "unique"):
+            renderer.landmark_active_frames(
+                None,
+                ["cam_01", "cam_01"],
+                frame_count=1,
+                body_count=1,
+                min_visible_cameras=2,
+                mean_visibility_threshold=0.05,
+            )
+
     def test_mesh_gate_requires_two_visible_selected_cameras(self):
         with tempfile.TemporaryDirectory() as directory:
             root = Path(directory)

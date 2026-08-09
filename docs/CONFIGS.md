@@ -112,8 +112,9 @@ Source: [`optimization/run_ma_3d.py`](../optimization/run_ma_3d.py).
 
 Source: [`visualization/cli.py`](../visualization/cli.py).
 
-- `--up-axis x|y|-y|z` — world up axis (default `z`); use `-y` for
-  Y-down reconstructions.
+- `--up-axis x|y|y-down|z` — world up axis (default `z`); use `y-down` for
+  Y-down reconstructions. The `--up-axis=-y` form remains accepted for
+  configuration compatibility.
 - `--fps N` — Rerun timeline + overlay video FPS (default 30).
 - `--cam-names-overlay <list>` — restrict overlay rendering to a camera subset.
 - `--rerun-light` — skip the heavy Rerun scene; only emit overlays.

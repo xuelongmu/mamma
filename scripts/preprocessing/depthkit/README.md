@@ -46,7 +46,8 @@ Use `--recordings <name> [<name> ...]` to select takes. When changing only a
 calibration-convention option after videos have already been prepared, pass
 `--calibration-only --overwrite` to validate and reuse the destination videos
 without re-encoding them. The requested image rotation must match the existing
-conversion manifest.
+conversion manifest, as must the source project, calibration hash, recordings,
+cameras, source paths, device IDs, and video fingerprints.
 
 Run a quick end-to-end solve:
 

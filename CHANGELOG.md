@@ -40,7 +40,7 @@ machine-local progress belong in [`docs/status.md`](docs/status.md).
 
 - X-up and Y-up reconstructions no longer appear sideways in Rerun when the
   corresponding visualization up-axis option is used.
-- Y-down reconstructions can select `--up-axis=-y` for signed floor detection,
+- Y-down reconstructions can select `--up-axis y-down` for signed floor detection,
   ground normals, and Rerun world-coordinate metadata.
 - Share-video filmstrips can preserve the source-frame offset for sliced
   reconstructions.
@@ -75,8 +75,12 @@ machine-local progress belong in [`docs/status.md`](docs/status.md).
 - Share-video rendering verifies that nonzero source-frame seeks were honored
   before emitting synchronized filmstrip frames.
 - Depthkit validation now checks converted camera models, rejects degenerate
-  rigs, and uses an explicit recording-selection option.
+  rigs and unsafe recording names, and uses an explicit recording-selection
+  option.
 - Depthkit auto mode reuses only probed H.264/yuv420p integral-CFR streams;
   overwrite and calibration-only reuse cannot leave stale or mismatched
   published descriptors.
+- Depthkit calibration-only reuse verifies the source project, calibration,
+  recordings, cameras, and video fingerprints before retaining existing pixels.
 - Share-video visibility gating tracks each reconstructed body independently.
+- Share-video camera selections reject duplicate names before visibility counts.

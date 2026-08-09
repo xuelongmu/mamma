@@ -5,6 +5,7 @@ from types import SimpleNamespace
 
 import numpy as np
 
+from visualization.cli import _build_parser
 from visualization.pipeline import _UP_AXIS_MAP
 from visualization.rerun_log import compute_floor_height
 
@@ -12,6 +13,22 @@ from visualization.rerun_log import compute_floor_height
 class NegativeUpAxisTests(unittest.TestCase):
     def test_pipeline_maps_negative_y_to_signed_axis(self):
         self.assertEqual(_UP_AXIS_MAP["-y"], (1, -1))
+        self.assertEqual(_UP_AXIS_MAP["y-down"], (1, -1))
+
+    def test_spaced_y_down_cli_alias_is_unambiguous(self):
+        arguments = _build_parser().parse_args(
+            [
+                "--seq-name",
+                "take",
+                "--ma-3d-dir",
+                "ma_3d",
+                "--out-path",
+                "output",
+                "--up-axis",
+                "y-down",
+            ]
+        )
+        self.assertEqual(arguments.up_axis, "y-down")
 
     def test_y_down_floor_uses_robust_maximum_y_coordinate(self):
         vertices = np.asarray(

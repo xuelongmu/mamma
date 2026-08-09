@@ -39,6 +39,32 @@ def camera_stream(
     )
 
 
+def source_identity_manifest(
+    project: Path,
+    takes: dict[str, list[converter.CameraStream]],
+    *,
+    rotation: str = "ccw",
+) -> dict:
+    calibration = project / "dkproject.json"
+    return {
+        "rotation": rotation,
+        "source_project": str(project),
+        "source_calibration_sha256": converter.sha256_file(calibration),
+        "recordings": {
+            name: [
+                {
+                    "camera": camera.name,
+                    "device_id": camera.device_id,
+                    "source": str(camera.source),
+                    "source_fingerprint": converter.source_fingerprint(camera),
+                }
+                for camera in cameras
+            ]
+            for name, cameras in takes.items()
+        },
+    }
+
+
 class PoseTests(unittest.TestCase):
     def test_world_pose_is_conjugated_for_handedness(self):
         pose = {"rotation": [0, 0, 0], "translation": [1, 2, 3]}
@@ -249,13 +275,51 @@ class PublicationTests(unittest.TestCase):
     def test_calibration_only_rejects_rotation_change(self):
         with tempfile.TemporaryDirectory() as directory:
             output = Path(directory)
+            project = output / "project"
+            project.mkdir()
+            (project / "dkproject.json").write_text("{}", encoding="utf-8")
+            source = project / "video.mp4"
+            source.write_bytes(b"video")
+            takes = {"take": [camera_stream(source)]}
             (output / "conversion_manifest.json").write_text(
-                json.dumps({"rotation": "ccw"}),
+                json.dumps(source_identity_manifest(project, takes)),
                 encoding="utf-8",
             )
-            converter.validate_calibration_only_manifest(output, "ccw")
+            converter.validate_calibration_only_manifest(
+                output,
+                "ccw",
+                project,
+                takes,
+            )
             with self.assertRaisesRegex(converter.ConversionError, "rotation"):
-                converter.validate_calibration_only_manifest(output, "cw")
+                converter.validate_calibration_only_manifest(
+                    output,
+                    "cw",
+                    project,
+                    takes,
+                )
+
+    def test_calibration_only_rejects_changed_source_fingerprint(self):
+        with tempfile.TemporaryDirectory() as directory:
+            output = Path(directory)
+            project = output / "project"
+            project.mkdir()
+            (project / "dkproject.json").write_text("{}", encoding="utf-8")
+            source = project / "video.mp4"
+            source.write_bytes(b"original video")
+            takes = {"take": [camera_stream(source)]}
+            (output / "conversion_manifest.json").write_text(
+                json.dumps(source_identity_manifest(project, takes)),
+                encoding="utf-8",
+            )
+            source.write_bytes(b"replacement video with a different size")
+            with self.assertRaisesRegex(converter.ConversionError, "source changed"):
+                converter.validate_calibration_only_manifest(
+                    output,
+                    "ccw",
+                    project,
+                    takes,
+                )
 
     def test_overwrite_invalidation_removes_all_published_descriptors(self):
         with tempfile.TemporaryDirectory() as directory:
@@ -272,6 +336,23 @@ class PublicationTests(unittest.TestCase):
 
 
 class ArgumentTests(unittest.TestCase):
+    def test_recording_names_must_be_unique_safe_path_components(self):
+        converter.validate_recording_names(["safe_take"])
+        invalid_names = (
+            ["duplicate", "duplicate"],
+            ["../escape"],
+            ["/absolute"],
+            ["nested/take"],
+            [r"nested\take"],
+            ["."],
+            [".."],
+            ["C:drive-qualified"],
+        )
+        for names in invalid_names:
+            with self.subTest(names=names):
+                with self.assertRaises(converter.ConversionError):
+                    converter.validate_recording_names(names)
+
     def test_validate_only_does_not_require_output_path(self):
         with mock.patch.object(
             sys,

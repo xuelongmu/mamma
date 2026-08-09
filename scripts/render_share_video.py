@@ -73,7 +73,7 @@ def parse_args() -> argparse.Namespace:
     )
     parser.add_argument(
         "--up-axis",
-        choices=("x", "y", "-y", "z", "-z"),
+        choices=("x", "y", "-y", "y-down", "z", "-z", "z-down"),
         default="x",
         help="World up axis before conversion to right-handed Y-up display space.",
     )
@@ -101,12 +101,12 @@ def world_to_display(vertices: np.ndarray, up_axis: str) -> np.ndarray:
         result = vertices[..., [2, 0, 1]]
     elif up_axis == "y":
         result = vertices
-    elif up_axis == "-y":
+    elif up_axis in ("-y", "y-down"):
         # Rotate 180 degrees around X rather than reflecting Y.
         result = vertices * np.array([1.0, -1.0, -1.0])
     elif up_axis == "z":
         result = vertices[..., [0, 2, 1]] * np.array([1.0, 1.0, -1.0])
-    elif up_axis == "-z":
+    elif up_axis in ("-z", "z-down"):
         result = vertices[..., [0, 2, 1]] * np.array([1.0, -1.0, 1.0])
     else:  # pragma: no cover - argparse prevents this
         raise ValueError(f"Unsupported up axis: {up_axis}")
@@ -149,6 +149,8 @@ def landmark_active_frames(
     min_visible_cameras: int,
     mean_visibility_threshold: float,
 ) -> np.ndarray:
+    if len(set(cameras)) != len(cameras):
+        raise ValueError("--cams must contain unique camera names")
     if ma_2d_dir is None:
         return np.ones((frame_count, body_count), dtype=bool)
     if min_visible_cameras <= 0:

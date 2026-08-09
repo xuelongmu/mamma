@@ -27,7 +27,7 @@ import re
 import shutil
 import subprocess
 from dataclasses import dataclass
-from pathlib import Path
+from pathlib import Path, PureWindowsPath
 from typing import Any, Iterable
 
 import cv2
@@ -538,7 +538,30 @@ def invalidate_capture_descriptors(output: Path) -> None:
         (output / name).unlink(missing_ok=True)
 
 
-def validate_calibration_only_manifest(output: Path, rotation: str) -> None:
+def validate_recording_names(recording_names: list[str]) -> None:
+    if len(set(recording_names)) != len(recording_names):
+        raise ConversionError("Recording names must be unique")
+    for name in recording_names:
+        if (
+            not isinstance(name, str)
+            or not name
+            or name in (".", "..")
+            or "/" in name
+            or "\\" in name
+            or Path(name).is_absolute()
+            or PureWindowsPath(name).drive
+        ):
+            raise ConversionError(
+                f"Recording name must be a safe single path component: {name!r}"
+            )
+
+
+def validate_calibration_only_manifest(
+    output: Path,
+    rotation: str,
+    project_root: Path,
+    takes: dict[str, list[CameraStream]],
+) -> None:
     manifest_path = output / "conversion_manifest.json"
     try:
         manifest = load_json(manifest_path)
@@ -551,6 +574,68 @@ def validate_calibration_only_manifest(output: Path, rotation: str) -> None:
             "--calibration-only cannot change image rotation; "
             "re-run video preparation with --overwrite"
         )
+    try:
+        prior_project = Path(manifest["source_project"]).resolve()
+        prior_calibration_sha256 = manifest["source_calibration_sha256"]
+        prior_takes = manifest["recordings"]
+    except (KeyError, TypeError) as exc:
+        raise ConversionError(
+            "--calibration-only requires source identity metadata from a "
+            "current conversion manifest"
+        ) from exc
+    if not isinstance(prior_takes, dict):
+        raise ConversionError(
+            "--calibration-only requires valid recording identity metadata"
+        )
+    calibration_path = project_root / "dkproject.json"
+    if (
+        prior_project != project_root.resolve()
+        or prior_calibration_sha256 != sha256_file(calibration_path)
+    ):
+        raise ConversionError(
+            "--calibration-only source project or calibration does not match "
+            "the existing conversion manifest"
+        )
+    if set(prior_takes) != set(takes):
+        raise ConversionError(
+            "--calibration-only recording set does not match the existing manifest"
+        )
+    for name, cameras in takes.items():
+        records = prior_takes.get(name)
+        if not isinstance(records, list):
+            raise ConversionError(
+                f"--calibration-only has invalid prior records for {name!r}"
+            )
+        prior_by_camera = {
+            record.get("camera"): record
+            for record in records
+            if isinstance(record, dict) and isinstance(record.get("camera"), str)
+        }
+        expected_camera_names = {camera.name for camera in cameras}
+        if (
+            len(prior_by_camera) != len(records)
+            or set(prior_by_camera) != expected_camera_names
+        ):
+            raise ConversionError(
+                f"--calibration-only camera set changed for recording {name!r}"
+            )
+        for camera in cameras:
+            prior = prior_by_camera[camera.name]
+            try:
+                prior_source = Path(prior["source"]).resolve()
+            except (KeyError, TypeError) as exc:
+                raise ConversionError(
+                    f"--calibration-only lacks source identity for "
+                    f"{name!r}/{camera.name}"
+                ) from exc
+            if (
+                prior.get("device_id") != camera.device_id
+                or prior_source != camera.source.resolve()
+                or prior.get("source_fingerprint") != source_fingerprint(camera)
+            ):
+                raise ConversionError(
+                    f"--calibration-only source changed for {name!r}/{camera.name}"
+                )
 
 
 def calibrations_match(
@@ -643,6 +728,7 @@ def main() -> None:
         ]
     if not recording_names:
         raise ConversionError("No requested/available recordings were found")
+    validate_recording_names(recording_names)
 
     takes = {
         name: gather_recording(project_root, project, name) for name in recording_names
@@ -702,7 +788,12 @@ def main() -> None:
     output.mkdir(parents=True, exist_ok=True)
 
     if args.calibration_only:
-        validate_calibration_only_manifest(output, args.rotate)
+        validate_calibration_only_manifest(
+            output,
+            args.rotate,
+            project_root,
+            takes,
+        )
     elif args.overwrite:
         invalidate_capture_descriptors(output)
 

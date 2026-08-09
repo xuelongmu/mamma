@@ -81,7 +81,7 @@ the `world` root:
 | --- | --- | --- |
 | X-up | `--up-axis x` | `RIGHT_HAND_X_UP` |
 | Y-up | `--up-axis y` | `RIGHT_HAND_Y_UP` |
-| Y-down | `--up-axis=-y` | `RIGHT_HAND_Y_DOWN` |
+| Y-down | `--up-axis y-down` | `RIGHT_HAND_Y_DOWN` |
 | Z-up | `--up-axis z` | `RIGHT_HAND_Z_UP` |
 
 SJTU sports footage is X-up. Verify that people stand upright and that the
@@ -121,7 +121,7 @@ not replace the source offset. The source video seek is the sum of both values.
 
 The share renderer converts its configured world-up axis to a conventional
 right-handed Y-up display space. SJTU is X-up, which is the default. For the
-validated Depthkit conversion use `--up-axis=-y`; do not apply a second
+validated Depthkit conversion use `--up-axis y-down`; do not apply a second
 rotation to already-converted vertices.
 
 Use `--azimuth-degrees` to orbit the virtual camera around the reconstruction.

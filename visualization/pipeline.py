@@ -40,7 +40,13 @@ from .rerun_log import RerunSceneLogger, compute_floor_height
 log = logging.getLogger(__name__)
 
 _VENDORED_FACES = Path(__file__).parent / "assets" / "smplx_faces.npy"
-_UP_AXIS_MAP = {"x": (0, 1), "y": (1, 1), "-y": (1, -1), "z": (2, 1)}
+_UP_AXIS_MAP = {
+    "x": (0, 1),
+    "y": (1, 1),
+    "-y": (1, -1),
+    "y-down": (1, -1),
+    "z": (2, 1),
+}
 
 
 def run_visualization(
@@ -82,7 +88,7 @@ def run_visualization(
     ma_3d_dir = Path(ma_3d_dir)
     out_path = Path(out_path)
     if up_axis not in _UP_AXIS_MAP:
-        raise ValueError(f"up_axis must be x/y/-y/z, got {up_axis!r}")
+        raise ValueError(f"up_axis must be x/y/y-down/z, got {up_axis!r}")
     if fps <= 0:
         raise ValueError(f"fps must be positive, got {fps}")
     if rerun_display_scale <= 0:

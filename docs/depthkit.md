@@ -81,7 +81,10 @@ Use `--recordings <name> [<name> ...]` to validate or prepare selected takes.
 If only a calibration convention changes after videos are prepared, use
 `--calibration-only --overwrite` to verify and reuse those videos.
 Calibration-only reuse requires the same image rotation recorded in the
-existing manifest.
+existing manifest. It also requires the source project, calibration hash,
+recording and camera sets, source paths, device IDs, and video fingerprints to
+match; otherwise, prepare the videos again rather than publishing mismatched
+provenance.
 
 ## Validate before MAMMA
 
@@ -156,7 +159,7 @@ instead of attributing every difference to view count.
 ## Render both 3D perspectives with the source views
 
 Depthkit's converted world is Y-down. The established share renderer converts
-it to a right-handed Y-up display when passed `--up-axis=-y`. A second azimuth
+it to a right-handed Y-up display when passed `--up-axis y-down`. A second azimuth
 places the opposite side of the performer beside the first 3D view, while the
 selected synchronized source cameras remain in the bottom filmstrip:
 
@@ -167,7 +170,7 @@ micromamba run -n mamma python scripts/render_share_video.py \
   --ma-2d-dir output/ma_2d/<tag>/<capture>/<sequence> \
   --videos-dir data/xuelong_depthkit/<sequence>/videos \
   --cams cam_01 cam_02 cam_03 cam_04 cam_06 cam_08 cam_09 cam_10 \
-  --up-axis=-y \
+  --up-axis y-down \
   --azimuth-degrees 45 \
   --secondary-azimuth-degrees 225 \
   --fps 30 \
