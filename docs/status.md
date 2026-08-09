@@ -250,3 +250,22 @@ camera 05 remained an isolated high-error view for the second body.
 - Matching 2D evidence is rooted at
   `output/ma_2d/xuelong_upright_4v_full_validated/depthkit_xuelong_10v_upright/`.
   These paths are generated local artifacts and remain uncommitted.
+
+## 2026-08-09 - Depthkit 6/8-view validation-provenance correction
+
+- The materialization-only validation used
+  `data/depthkit_xuelong_10v_upright/capture.json` with
+  `configs/experiments/depthkit-quick-6view.yaml`,
+  `configs/experiments/depthkit-full-6view.yaml`,
+  `configs/experiments/depthkit-quick-8view.yaml`, and
+  `configs/experiments/depthkit-full-8view.yaml`.
+- The six-view camera set was `cam_01, cam_02, cam_03, cam_04, cam_06, cam_08`;
+  the eight-view set added `cam_09, cam_10`. Both capture recordings were bound
+  by the materializer.
+- This validation parsed, materialized, and schema-checked the presets only. It
+  did not dispatch pipeline stages, assign output tags, or produce artifacts,
+  so there are no 6/8-view artifact paths or reconstruction results to report.
+- Next action: run the eight-view upstream evidence once under a new output tag,
+  then reuse compatible masks, identities, and 2D landmarks for nested 6/4-view
+  `ma_3d` runs with distinct tags. Record per-camera failures and artifact paths
+  before comparing reconstruction quality.

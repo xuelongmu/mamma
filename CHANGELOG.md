@@ -89,5 +89,7 @@ machine-local progress belong in [`docs/status.md`](docs/status.md).
 - Masked-output and collage diagnostics also derive FPS from the bound capture.
 - Low camera look-at scores warn instead of rejecting valid parallel arrays;
   degenerate coincident-center rigs remain invalid.
+- Depthkit selection rejects devices without color streams, and non-overwrite
+  conversion preflights every descriptor and video before writing any pixels.
 - Share-video visibility gating tracks each reconstructed body independently.
 - Share-video camera selections reject duplicate names before visibility counts.

@@ -173,6 +173,9 @@ it to a right-handed Y-up display when passed `--up-axis y-down`. A second azimu
 places the opposite side of the performer beside the first 3D view, while the
 selected synchronized source cameras remain in the bottom filmstrip:
 
+Replace `<capture-fps>` with the integral `cam_fps` value from the generated
+`data/<capture>/capture.json`.
+
 ```bash
 PYOPENGL_PLATFORM=egl \
 micromamba run -n mamma python scripts/render_share_video.py \
@@ -183,7 +186,7 @@ micromamba run -n mamma python scripts/render_share_video.py \
   --up-axis y-down \
   --azimuth-degrees 45 \
   --secondary-azimuth-degrees 225 \
-  --fps 30 \
+  --fps <capture-fps> \
   --output output/share/<tag>.mp4 \
   --title "Xuelong reconstruction - eight views"
 ```

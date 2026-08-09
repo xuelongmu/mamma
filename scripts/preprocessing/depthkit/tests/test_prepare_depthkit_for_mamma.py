@@ -186,6 +186,19 @@ class CalibrationTests(unittest.TestCase):
             (nested / "dkproject.json").write_text("{}", encoding="utf-8")
             self.assertEqual(converter.discover_project_root(Path(directory)), nested)
 
+    def test_explicit_recording_rejects_device_without_color_stream(self):
+        project = {
+            "recordings": {
+                "take": {
+                    "streams": {
+                        "device_1": [{"type": "depth"}],
+                    }
+                }
+            }
+        }
+        with self.assertRaisesRegex(converter.ConversionError, "lacks a color"):
+            converter.gather_recording(Path("unused"), project, "take")
+
     def test_calibration_comparison_checks_extrinsics(self):
         reference = {
             "intrinsic_matrix": np.eye(3).tolist(),
@@ -203,6 +216,31 @@ class CalibrationTests(unittest.TestCase):
 
 
 class PublicationTests(unittest.TestCase):
+    def test_non_overwrite_preflight_prevents_partial_video_writes(self):
+        with tempfile.TemporaryDirectory() as directory:
+            root = Path(directory)
+            output = root / "output"
+            videos = output / "take" / "videos"
+            videos.mkdir(parents=True)
+            source_1 = root / "source_1.mp4"
+            source_2 = root / "source_2.mp4"
+            source_1.write_bytes(b"one")
+            source_2.write_bytes(b"two")
+            cameras = [
+                camera_stream(source_1, name="cam_01", device_id="device_1"),
+                camera_stream(source_2, name="cam_02", device_id="device_2"),
+            ]
+            (videos / "cam_02.mp4").write_bytes(b"existing")
+            with self.assertRaisesRegex(converter.ConversionError, "overwrite"):
+                converter.preflight_non_overwrite(
+                    output,
+                    {"take": cameras},
+                    mode="copy",
+                    target_fps=30,
+                    rotation="none",
+                )
+            self.assertFalse((videos / "cam_01.mp4").exists())
+
     def test_recording_with_dropped_frames_is_rejected(self):
         camera = camera_stream(Path("unused"))
         dropped_camera = converter.CameraStream(

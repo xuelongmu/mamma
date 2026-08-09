@@ -56,6 +56,11 @@ without re-encoding them. The requested image rotation must match the existing
 conversion manifest, as must the source project, calibration hash, recordings,
 cameras, source paths, device IDs, and video fingerprints.
 
+Every participating device in an explicitly selected recording must have a
+color stream. Without `--overwrite`, the adapter preflights all descriptors and
+camera destinations before preparing the first video, so a late conflict cannot
+leave published metadata beside partially replaced footage.
+
 Run a quick end-to-end solve:
 
 ```bash

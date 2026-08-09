@@ -258,7 +258,9 @@ def gather_recording(
     for device_id, streams in recording.get("streams", {}).items():
         color_stream = stream_of_type(streams, "color")
         if color_stream is None:
-            continue
+            raise ConversionError(
+                f"Recording {recording_name!r} device {device_id!r} lacks a color stream"
+            )
         source = resolve_asset(project_root, color_stream["assetPath"])
         if not source.is_file():
             raise ConversionError(f"Missing color video for {recording_name}: {source}")
@@ -453,12 +455,10 @@ def replaceable_destination(
     return True
 
 
-def prepare_video(
+def effective_video_mode(
     camera: CameraStream,
-    destination: Path,
     mode: str,
     target_fps: float,
-    overwrite: bool,
     rotation: str,
 ) -> str:
     actual_mode = mode
@@ -474,6 +474,18 @@ def prepare_video(
             f"--video-mode {actual_mode} cannot apply --rotate {rotation}; "
             "use auto or reencode"
         )
+    return actual_mode
+
+
+def prepare_video(
+    camera: CameraStream,
+    destination: Path,
+    mode: str,
+    target_fps: float,
+    overwrite: bool,
+    rotation: str,
+) -> str:
+    actual_mode = effective_video_mode(camera, mode, target_fps, rotation)
     if not replaceable_destination(
         destination,
         camera.source,
@@ -528,6 +540,41 @@ def prepare_video(
         if os.path.lexists(temporary):
             temporary.unlink()
     return actual_mode
+
+
+def preflight_non_overwrite(
+    output: Path,
+    takes: dict[str, list[CameraStream]],
+    mode: str,
+    target_fps: float,
+    rotation: str,
+) -> None:
+    for name in ("calibration.json", "capture.json", "conversion_manifest.json"):
+        descriptor = output / name
+        if os.path.lexists(descriptor):
+            raise ConversionError(
+                f"Refusing to overwrite {descriptor}; pass --overwrite"
+            )
+    for recording_name, cameras in takes.items():
+        for camera in cameras:
+            destination = output / recording_name / "videos" / f"{camera.name}.mp4"
+            if not os.path.lexists(destination):
+                continue
+            actual_mode = effective_video_mode(
+                camera,
+                mode,
+                target_fps,
+                rotation,
+            )
+            if (
+                actual_mode == "symlink"
+                and destination.is_symlink()
+                and destination.resolve() == camera.source.resolve()
+            ):
+                continue
+            raise ConversionError(
+                f"Refusing to overwrite {destination}; pass --overwrite"
+            )
 
 
 def sha256_file(path: Path) -> str:
@@ -831,6 +878,14 @@ def main() -> None:
         )
     output.mkdir(parents=True, exist_ok=True)
 
+    if not args.calibration_only and not args.overwrite:
+        preflight_non_overwrite(
+            output,
+            takes,
+            args.video_mode,
+            fps,
+            args.rotate,
+        )
     if args.calibration_only:
         validate_calibration_only_manifest(
             output,
