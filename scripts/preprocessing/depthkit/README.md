@@ -15,6 +15,8 @@ depth-to-color. That is the default; use
 opposite convention. The Xuelong conversion was independently validated with
 RGB feature matches; always inspect epipolar and multi-view reprojection error
 after conversion rather than relying on camera look-at direction alone.
+Low finite look-at scores warn rather than reject valid parallel/front-facing
+arrays; coincident camera centers remain an error.
 
 Validate every recording whose RGB assets are present:
 
@@ -36,7 +38,8 @@ when no rotation is needed. It re-encodes all other sources. Use `copy` for a
 self-contained dataset or `reencode` to force H.264/yuv420p
 constant-frame-rate output. Fractional source rates are conformed to the
 nearest integer; an explicit `--fps` must be a positive integer. Visualization
-inherits the generated capture rate when its preset does not override it.
+and mask diagnostic videos inherit the generated capture rate when their
+presets do not override it.
 `--rotate ccw`, `cw`, or `180`
 rotates every frame and transforms intrinsics, tangential distortion,
 resolution, and extrinsics so projection geometry remains unchanged. The

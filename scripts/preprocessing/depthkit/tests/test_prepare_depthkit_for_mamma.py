@@ -117,6 +117,12 @@ class PoseTests(unittest.TestCase):
         with self.assertRaisesRegex(converter.ConversionError, "distinct"):
             converter.camera_look_at_score(cameras, "depth-to-color")
 
+    def test_low_parallel_rig_score_is_a_warning_not_an_error(self):
+        warning = converter.look_at_score_warning(0.0)
+        self.assertIsNotNone(warning)
+        self.assertIn("parallel", warning)
+        self.assertIsNone(converter.look_at_score_warning(0.9))
+
 
 class CalibrationTests(unittest.TestCase):
     def test_depthkit_coefficients_are_reordered_for_opencv(self):

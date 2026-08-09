@@ -26,6 +26,7 @@ import os
 import re
 import shutil
 import subprocess
+import sys
 from dataclasses import dataclass
 from pathlib import Path, PureWindowsPath
 from typing import Any, Iterable
@@ -405,6 +406,16 @@ def camera_look_at_score(
     if not math.isfinite(score):
         raise ConversionError("Camera look-at score is non-finite")
     return score
+
+
+def look_at_score_warning(score: float) -> str | None:
+    if score < 0.5:
+        return (
+            "Camera look-at score is low for a surrounding inward-looking rig; "
+            "parallel/front-facing arrays can legitimately have a low score, so "
+            "verify the intended rig geometry"
+        )
+    return None
 
 
 def write_json(path: Path, value: Any, overwrite: bool) -> None:
@@ -796,10 +807,9 @@ def main() -> None:
     print(
         f"Validated {len(takes)} recording(s), {len(first)} cameras, look-at score={score:.4f}"
     )
-    if score < 0.5:
-        raise ConversionError(
-            "Camera look-at score is unexpectedly low; verify Depthkit pose conventions"
-        )
+    warning = look_at_score_warning(score)
+    if warning:
+        print(f"warning: {warning}", file=sys.stderr)
     for name, cameras in takes.items():
         counts = [camera.frame_count for camera in cameras]
         print(

@@ -4,6 +4,7 @@ import os
 
 import pytest
 
+from run_ma_masks import _apply_preview_fps
 from process_sequence import (
     _collage_fps,
     cam_data_from_image_dir,
@@ -23,6 +24,11 @@ class TestCollageFps:
     def test_uses_mask_export_fps(self):
         cfg = {"exports": {"masked_outputs_fps": 25.0}}
         assert _collage_fps(cfg) == 25.0
+
+    def test_runner_preview_fps_overrides_assignment_config(self):
+        cfg = {"exports": {"masked_outputs_fps": 30.0}}
+        result = _apply_preview_fps(cfg, 25.0)
+        assert result["exports"]["masked_outputs_fps"] == 25.0
 
 
 class TestNormalizeCamNames:

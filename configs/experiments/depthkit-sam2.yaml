@@ -11,5 +11,3 @@ masks:
 sam:
   offload_video_to_cpu: true
   offload_state_to_cpu: true
-exports:
-  masked_outputs_fps: 30.0

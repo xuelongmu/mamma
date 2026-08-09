@@ -32,6 +32,7 @@ Examples:
         --out output --sam_version sam3 --start 10 --end 50
 """
 import argparse
+import math
 import os
 
 from core.logging import logger
@@ -42,6 +43,27 @@ from process_sequence import (
     INIT_FRAME_ID,
     DEFAULT_ASSIGNMENT_CFG,
 )
+
+
+def positive_fps(value):
+    try:
+        parsed = float(value)
+    except (TypeError, ValueError) as exc:
+        raise argparse.ArgumentTypeError("must be a number") from exc
+    if not math.isfinite(parsed) or parsed <= 0:
+        raise argparse.ArgumentTypeError("must be finite and positive")
+    return parsed
+
+
+def _apply_preview_fps(assignment_config, preview_fps):
+    if preview_fps is None:
+        return assignment_config
+    if assignment_config is None:
+        assignment_config = {}
+    assignment_config.setdefault("exports", {})["masked_outputs_fps"] = float(
+        preview_fps
+    )
+    return assignment_config
 
 
 def main():
@@ -137,6 +159,10 @@ SAM backends:
                              '(sam2 -> configs/sam2.yaml, sam3/sam3_prompt -> configs/sam3.yaml)')
     parser.add_argument('--skip_collage', action='store_true',
                         help='Skip collage video generation at the end')
+    parser.add_argument('--preview-fps', '--preview_fps', '--masked_outputs_fps',
+                        dest='preview_fps', type=positive_fps, default=None,
+                        help='FPS for masked-output and collage diagnostic videos. '
+                             'The MAMMA runner derives this from capture.cam_fps.')
     parser.add_argument('--skip_masked_outputs', action='store_true',
                         help='Skip overlay visualization images and MP4 (saves time/disk)')
     parser.add_argument('--debug_crop_summary', action='store_true',
@@ -235,6 +261,7 @@ SAM backends:
     assignment_config = load_assignment_config(args.cfg)
     if assignment_config:
         logger.info(f"Loaded assignment config: {args.cfg}")
+    assignment_config = _apply_preview_fps(assignment_config, args.preview_fps)
 
     # Inject CLI flag into assignment config so the pipeline can read it
     if args.skip_masked_outputs:

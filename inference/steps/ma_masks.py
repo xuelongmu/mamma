@@ -31,6 +31,7 @@ class MaMasksBuilder(StepBuilder):
 
     def python_argv(self, seq_name: str) -> List[str]:
         frame_source_flags = self._frame_source_flags()
+        flags = self.flags
 
         # ma_cap_dir: when a frame-source override is set, it is allowed
         # as a calibration source only (segmentation/process_sequence.py
@@ -56,7 +57,17 @@ class MaMasksBuilder(StepBuilder):
         argv += ["--out", out]
         if self.dataset_name:
             argv += ["--dataset_name", self.dataset_name]
-        argv += self.flags
+        if not any(
+            flag in ("--preview-fps", "--preview_fps", "--masked_outputs_fps")
+            or flag.startswith("--preview-fps=")
+            or flag.startswith("--preview_fps=")
+            or flag.startswith("--masked_outputs_fps=")
+            for flag in flags
+        ):
+            capture_fps = self.global_cfg.get("cam_fps")
+            if capture_fps is not None:
+                argv += ["--preview_fps", str(capture_fps)]
+        argv += flags
 
         # Translate per-installation paths from env -> argv.
         missing: List[str] = []
@@ -89,8 +100,8 @@ class MaMasksBuilder(StepBuilder):
         #      nothing. SAM 3 self-resolves through HuggingFace Hub
         #      (~/.cache/huggingface/hub/), so the subprocess doesn't
         #      need a path from the runner.
-        if not _preset_supplies_sam_checkpoint(self.flags):
-            sam_version = _resolve_sam_version(self.flags)
+        if not _preset_supplies_sam_checkpoint(flags):
+            sam_version = _resolve_sam_version(flags)
             if sam_version == "sam2":
                 sam2_value = os.environ.get(_MA_MASKS_SAM2_ENV_KEY)
                 if sam2_value:

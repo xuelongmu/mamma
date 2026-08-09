@@ -78,7 +78,8 @@ capture. Fractional source rates are conformed to the nearest integral rate;
 an explicit `--fps` must be a positive integer. The generated capture rate is
 also used automatically for MAMMA visualization playback. Any selected color
 stream that reports dropped capture frames is rejected because MAMMA aligns
-views by frame index.
+views by frame index. Masked-output and collage diagnostic videos inherit the
+same capture rate.
 
 Use `--recordings <name> [<name> ...]` to validate or prepare selected takes.
 If only a calibration convention changes after videos are prepared, use
@@ -99,6 +100,11 @@ For every selected camera, verify:
 4. a proper, orthonormal camera rotation;
 5. low epipolar disagreement on matched RGB features; and
 6. usable subject coverage throughout the requested interval.
+
+The reported camera look-at score is a diagnostic for inward-facing surround
+rigs, not a universal validity test. A low finite score emits a warning because
+parallel and front-facing arrays can be valid; coincident camera centers still
+fail validation.
 
 The converter preserves the supported Brown-Conrady k1/k2/p1/p2/k3
 coefficients and rejects nonzero unsupported tails, but the current MAMMA

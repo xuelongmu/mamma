@@ -86,5 +86,8 @@ machine-local progress belong in [`docs/status.md`](docs/status.md).
   distortion tails before publishing a frame-index-aligned capture.
 - Visualization derives its FPS from the bound capture unless explicitly
   overridden, so non-30-fps captures keep the correct playback speed.
+- Masked-output and collage diagnostics also derive FPS from the bound capture.
+- Low camera look-at scores warn instead of rejecting valid parallel arrays;
+  degenerate coincident-center rigs remain invalid.
 - Share-video visibility gating tracks each reconstructed body independently.
 - Share-video camera selections reject duplicate names before visibility counts.

@@ -86,6 +86,8 @@ Source: [`segmentation/run_ma_masks.py`](../segmentation/run_ma_masks.py).
 - `--expected_subjects N` — force the person count (auto-detected when unset).
 - `--init_frame N` — frame index used for person-detection initialisation.
 - `--interactive` — click-to-init through a GUI instead of YOLO auto-detect.
+- `--preview-fps F` — FPS for masked-output and collage diagnostics. The run
+  builder derives it from `capture.cam_fps` when not explicitly overridden.
 - `--undistort` — apply Vicon-radial-2 undistortion before segmentation.
 
 #### `ma_2d`

@@ -1,14 +1,17 @@
 from __future__ import annotations
 
 import json
+import os
 import tempfile
 import unittest
 from pathlib import Path
 from types import SimpleNamespace
+from unittest import mock
 
 import numpy as np
 
 from inference.config import materialize_run_config
+from inference.steps.ma_masks import MaMasksBuilder
 from inference.steps.ma_vis import MaVisBuilder
 from visualization.cli import _build_parser
 from visualization.pipeline import _UP_AXIS_MAP
@@ -25,6 +28,10 @@ class NegativeUpAxisTests(unittest.TestCase):
                 json.dumps(
                     {
                         "global": {"out_dir": "output"},
+                        "ma_masks": {
+                            "script": "run_ma_masks.py",
+                            "flags": [],
+                        },
                         "ma_vis": {
                             "script": "run_ma_vis.py",
                             "flags": ["--rerun-light"],
@@ -46,8 +53,18 @@ class NegativeUpAxisTests(unittest.TestCase):
             config = materialize_run_config(str(preset), str(capture))
             builder = MaVisBuilder(config["ma_vis"], config["global"], "tag")
             arguments = builder.python_argv("take")
+            with mock.patch.dict(
+                os.environ,
+                {"MAMMA_YOLO_CHECKPOINT": "weights.pt"},
+                clear=False,
+            ):
+                mask_arguments = MaMasksBuilder(
+                    config["ma_masks"], config["global"], "tag"
+                ).python_argv("take")
         fps_index = arguments.index("--fps")
         self.assertEqual(arguments[fps_index + 1], "25")
+        preview_fps_index = mask_arguments.index("--preview_fps")
+        self.assertEqual(mask_arguments[preview_fps_index + 1], "25")
 
     def test_pipeline_maps_negative_y_to_signed_axis(self):
         self.assertEqual(_UP_AXIS_MAP["-y"], (1, -1))
