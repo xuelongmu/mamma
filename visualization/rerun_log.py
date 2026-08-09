@@ -77,19 +77,29 @@ def _orthonormalize(R: np.ndarray) -> np.ndarray:
 
 
 def compute_floor_height(
-    motions: Sequence[PersonMotion], *, up_axis: int = 2, percentile: float = 5.0
+    motions: Sequence[PersonMotion],
+    *,
+    up_axis: int = 2,
+    up_sign: int = 1,
+    percentile: float = 5.0,
 ) -> float:
-    """Robust floor height: 5th percentile of per-frame minima of the up axis.
+    """Robust floor coordinate along a signed world-up axis.
 
     Mirrors upstream ``MultiViewSystem.compute_floor_height``.
     """
+    if up_sign not in (-1, 1):
+        raise ValueError(f"up_sign must be -1 or 1, got {up_sign}")
     if not motions:
         return 0.0
     per_frame_mins = []
     for motion in motions:
         verts = motion.vertices
-        per_frame_mins.append(verts[:, :, up_axis].min(axis=1))
-    return float(np.percentile(np.concatenate(per_frame_mins), percentile))
+        signed_height = up_sign * verts[:, :, up_axis]
+        per_frame_mins.append(signed_height.min(axis=1))
+    signed_floor = float(
+        np.percentile(np.concatenate(per_frame_mins), percentile)
+    )
+    return up_sign * signed_floor
 
 
 class RerunSceneLogger:
@@ -200,18 +210,30 @@ class RerunSceneLogger:
     # ---- ground ----------------------------------------------------------
 
     def log_ground(
-        self, *, floor_height: float = 0.0, size: float = 10.0, up_axis: int = 2
+        self,
+        *,
+        floor_height: float = 0.0,
+        size: float = 10.0,
+        up_axis: int = 2,
+        up_sign: int = 1,
     ) -> None:
         rr = self._rr
         # Tell Rerun how the source world is oriented. Without this metadata
         # the viewer assumes Z-up even when the dataset and ground calculation
         # use X- or Y-up, which makes valid reconstructions appear sideways.
         world_coordinates = {
-            0: rr.ViewCoordinates.RIGHT_HAND_X_UP,
-            1: rr.ViewCoordinates.RIGHT_HAND_Y_UP,
-            2: rr.ViewCoordinates.RIGHT_HAND_Z_UP,
+            (0, 1): rr.ViewCoordinates.RIGHT_HAND_X_UP,
+            (1, 1): rr.ViewCoordinates.RIGHT_HAND_Y_UP,
+            (1, -1): rr.ViewCoordinates.RIGHT_HAND_Y_DOWN,
+            (2, 1): rr.ViewCoordinates.RIGHT_HAND_Z_UP,
         }
-        rr.log("world", world_coordinates[up_axis], static=True)
+        try:
+            coordinates = world_coordinates[(up_axis, up_sign)]
+        except KeyError as exc:
+            raise ValueError(
+                f"Unsupported signed up axis: index={up_axis}, sign={up_sign}"
+            ) from exc
+        rr.log("world", coordinates, static=True)
         plane = [a for a in (0, 1, 2) if a != up_axis]
         a0, a1 = plane
         corners = [(-size, size), (size, size), (-size, -size), (size, -size)]
@@ -221,7 +243,7 @@ class RerunSceneLogger:
             coords[i, a1] = c1
             coords[i, up_axis] = floor_height
         normal = np.zeros(3, dtype=np.float64)
-        normal[up_axis] = 1.0
+        normal[up_axis] = float(up_sign)
         ground = rr.Mesh3D(
             vertex_positions=coords,
             triangle_indices=np.array([[0, 1, 2], [1, 3, 2]]),

@@ -1,0 +1,62 @@
+global:
+  version: 1.0
+  username: ''
+  out_dir: output
+  jobs_log_dir: output/logs/jobs
+  bind: []
+  conda_env: mamma
+  cam_names: [cam_01, cam_02, cam_03, cam_04, cam_06, cam_08, cam_09, cam_10]
+  start_frame: 300
+  end_frame: 330
+ma_cap:
+  engine: conda
+  enabled: true
+  dependencies: []
+  script: run_ma_cap.py
+  repo_path: capture
+  flags: []
+ma_masks:
+  engine: conda
+  enabled: true
+  dependencies:
+  - ma_cap
+  script: run_ma_masks.py
+  repo_path: segmentation
+  flags:
+  - --sam_version sam2
+  - --cfg ../configs/experiments/depthkit-sam2.yaml
+  undistort: false
+ma_2d:
+  engine: conda
+  enabled: true
+  dependencies:
+  - ma_masks
+  script: run_ma_2d.py
+  repo_path: landmarks
+  config_path: configs/train/models_2d/config_mammanet_mask_512.yaml
+  weights: data/weights/ma_2d/mamma_mask_full_cvpr.ckpt
+  flags: []
+  undistort: false
+ma_3d:
+  engine: conda
+  enabled: true
+  dependencies:
+  - ma_2d
+  script: run_ma_3d.py
+  repo_path: optimization
+  config_file: config_files/contact_configs/config_real_gmf_small_vals_detr_exp_no_vtemplate.yaml
+  flags: []
+ma_vis:
+  engine: conda
+  enabled: true
+  dependencies:
+  - ma_2d
+  - ma_3d
+  script: run_ma_vis.py
+  repo_path: visualization
+  flags:
+  - --rerun-light
+  - --no-rerun-images
+  - --skip-overlay
+  - --up-axis=-y
+  undistort: false

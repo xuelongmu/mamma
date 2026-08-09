@@ -16,8 +16,13 @@ machine-local progress belong in [`docs/status.md`](docs/status.md).
 - A dated research log in `docs/status.md`.
 - Local operations, Rerun viewer, and SJTU sports runbooks.
 - A reusable SJTU sports calibration and footage adapter.
+- A validated Depthkit/Scatter calibration and RGB adapter with nested
+  4/6/8-view quick/full experiment presets.
 - A share-video renderer with upright, Rerun-style presentation and a
   synchronized camera filmstrip.
+- Depthkit-aware share rendering with Y-down world conversion, optional
+  opposite-side 3D views, and landmark-based suppression of unconstrained
+  entrance and exit meshes.
 - Camera-count ablation captures and helper commands.
 - A quantitative MammaEval 4/6/8-view research entry with camera-quality and
   ground-truth provenance caveats.
@@ -35,6 +40,8 @@ machine-local progress belong in [`docs/status.md`](docs/status.md).
 
 - X-up and Y-up reconstructions no longer appear sideways in Rerun when the
   corresponding visualization up-axis option is used.
+- Y-down reconstructions can select `--up-axis y-down` for signed floor detection,
+  ground normals, and Rerun world-coordinate metadata.
 - Share-video filmstrips can preserve the source-frame offset for sliced
   reconstructions.
 - SJTU visualization uses the conformed 25 fps timeline, and the adapter now
@@ -67,3 +74,35 @@ machine-local progress belong in [`docs/status.md`](docs/status.md).
   selections reject duplicate IDs before creating a session.
 - Share-video rendering verifies that nonzero source-frame seeks were honored
   before emitting synchronized filmstrip frames.
+- Depthkit validation now checks converted camera models, rejects degenerate
+  rigs and unsafe recording names, and uses an explicit recording-selection
+  option.
+- Depthkit auto mode reuses only probed H.264/yuv420p integral-CFR streams;
+  overwrite and calibration-only reuse cannot leave stale or mismatched
+  published descriptors.
+- Depthkit calibration-only reuse verifies the source project, calibration,
+  recordings, cameras, and video fingerprints before retaining existing pixels.
+- Depthkit conversion rejects reported dropped frames and unsupported nonzero
+  distortion tails before publishing a frame-index-aligned capture.
+- Visualization derives its FPS from the bound capture unless explicitly
+  overridden, so non-30-fps captures keep the correct playback speed.
+- Masked-output and collage diagnostics also derive FPS from the bound capture.
+- Low camera look-at scores warn instead of rejecting valid parallel arrays;
+  degenerate coincident-center rigs remain invalid.
+- Depthkit selection rejects devices without color streams, and non-overwrite
+  conversion preflights every descriptor and video before writing any pixels.
+- Calibration-only overwrite validates every reused video before withdrawing
+  the complete old descriptor set and publishing replacement metadata.
+- Depthkit conversion requires one common source FPS across every selected
+  camera and recording before any all-stream rate conformance.
+- Depthkit conversion requires equivalent synchronization offsets within each
+  take instead of publishing unshifted, frame-misaligned camera streams.
+- Overwrite requests preflight every effective video mode before descriptor
+  invalidation, including copy/link FPS compatibility, and calibration-only
+  reuse verifies prepared-video identity.
+- Depthkit output preflight rejects recording/video directory symlinks that
+  resolve outside the selected output tree.
+- Mask previews and visualization inherit an explicit capture-stage FPS
+  override instead of reverting to the source capture rate.
+- Share-video visibility gating tracks each reconstructed body independently.
+- Share-video camera selections reject duplicate names before visibility counts.

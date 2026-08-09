@@ -86,6 +86,8 @@ Source: [`segmentation/run_ma_masks.py`](../segmentation/run_ma_masks.py).
 - `--expected_subjects N` — force the person count (auto-detected when unset).
 - `--init_frame N` — frame index used for person-detection initialisation.
 - `--interactive` — click-to-init through a GUI instead of YOLO auto-detect.
+- `--preview-fps F` — FPS for masked-output and collage diagnostics. The run
+  builder derives it from `capture.cam_fps` when not explicitly overridden.
 - `--undistort` — apply Vicon-radial-2 undistortion before segmentation.
 
 #### `ma_2d`
@@ -112,8 +114,11 @@ Source: [`optimization/run_ma_3d.py`](../optimization/run_ma_3d.py).
 
 Source: [`visualization/cli.py`](../visualization/cli.py).
 
-- `--up-axis x|y|z` — world up axis (default `z`).
-- `--fps N` — Rerun timeline + overlay video FPS (default 30).
+- `--up-axis x|y|y-down|z` — world up axis (default `z`); use `y-down` for
+  Y-down reconstructions. The `--up-axis=-y` form remains accepted for
+  configuration compatibility.
+- `--fps N` — Rerun timeline + overlay video FPS. When omitted, the run builder
+  uses `capture.cam_fps`; standalone CLI use defaults to 30.
 - `--cam-names-overlay <list>` — restrict overlay rendering to a camera subset.
 - `--rerun-light` — skip the heavy Rerun scene; only emit overlays.
 
@@ -180,6 +185,7 @@ For the on-disk data layout, see [`docs/INSTALL.md`](INSTALL.md).
 | `seq_ids`       | int list     | no       | Subset of sequence ids to run. Empty / omitted = all sequences in `capture_json`. Override on the CLI with `--seqs`. |
 | `out_dir`       | path         | yes      | Root output directory. Override on the CLI with `--out-dir`. |
 | `cam_names`     | string list  | yes (run; presets omit) | Camera names. Forwarded as `--cam_names` to most steps. Presets omit this; the materializer derives it from `capture.cams` at submit time. |
+| `cam_fps`       | positive int | no (presets omit) | Capture frame rate. The materializer normalizes integral numeric `capture.cam_fps` values; `ma_vis` uses it unless its flags explicitly override `--fps`. |
 | `conda_env`     | string       | no       | Default conda env for the `conda` engine (default `mamma`). |
 | `jobs_log_dir`  | path         | no       | Where per-(step, seq) `.log/.out/.err` files go. Falls back to `$MAMMA_DATA_DIR/logs` or `~/.mamma/logs`. |
 | `username`      | string       | no       | Inserted into log paths so multi-user setups don't collide. Falls back to `$USER`. |

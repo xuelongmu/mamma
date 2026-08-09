@@ -97,6 +97,11 @@ class StepBuilder:
         return list(self.global_cfg.get("cam_names", []))
 
     @property
+    def effective_cam_fps(self):
+        """Capture-stage rate after any explicit ma_cap --fps override."""
+        return self.global_cfg.get("effective_cam_fps", self.global_cfg.get("cam_fps"))
+
+    @property
     def flags(self) -> List[str]:
         """Extra argv flags, parsed shell-style.
 

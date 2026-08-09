@@ -196,3 +196,87 @@ camera 05 remained an isolated high-error view for the second body.
 - Next action: rerun this frame-0 check into the repository's gitignored `tmp/`
   directory after renderer changes, add middle/end frame checks for framing and
   synchronization, and only then render a full share video.
+
+## 2026-08-08 - Depthkit Xuelong calibration and four-view reconstruction
+
+- Converted the 10-camera Xuelong `dkproject.json` using the validated Scatter
+  convention: conjugate the stored depth-camera-to-world pose with
+  `H = diag(1, 1, -1, 1)`, then compose the inverse of the stored
+  depth-to-color extrinsic before producing OpenCV world-to-camera matrices.
+- The initial calibration interpretation produced roughly 85 px median
+  multi-view disagreement across the first four cameras. Matched RGB evidence
+  fell to 4.29 px median after the handedness and color-extrinsic correction.
+- The first-four-camera full runs completed 827 frames for recording `..._02_...`
+  and 1,203 frames for `..._06_...`; saved SMPL-X vertices and joints were
+  finite. The corresponding 30-frame validation errors were `22, 7, 11, 15 px`
+  and `10, 5, 6, 14 px` by camera.
+- The 10-view aggregate calibration check was usable but less uniform: median
+  camera disagreements were approximately `6.40, 4.14, 4.41, 6.41, 6.07,
+  6.56, 9.86, 6.29, 4.66, 7.02 px`. Camera 07 was the clearest outlier, so the
+  tested full baseline remains cameras 01-04 rather than treating all views as
+  equally informative.
+- The current MAMMA optimization path does not consume the retained OpenCV
+  distortion coefficients. A stronger follow-up is to undistort the RGB
+  footage and update intrinsics before repeating controlled camera-count
+  comparisons.
+- Source footage, conformed captures, reconstructions, and rendered media
+  remain local generated artifacts and are not committed.
+
+## 2026-08-08 - Depthkit nested 6/8-view extension
+
+- Added nested six-view cameras `01, 02, 03, 04, 06, 08` and eight-view
+  cameras `01, 02, 03, 04, 06, 08, 09, 10`.
+- The additions fill missing horizontal rig azimuths with wide-baseline cameras.
+  Camera 07 remains excluded because its 9.86 px calibration disagreement was
+  the clearest 10-camera outlier; camera 05 remains outside the baseline because
+  it is a closer, elevated view that does not expand horizontal coverage.
+- Added quick and full presets for both camera counts. These configurations are
+  materialized and validated but the six- and eight-view full reconstructions
+  have not yet completed, so no comparative result is claimed.
+- Standalone runs recompute upstream evidence. A controlled 4/6/8-view ablation
+  must reuse compatible masks, identities, and 2D landmarks from the largest
+  set and vary only the cameras used by the 3D optimizer.
+
+## 2026-08-08 - Depthkit artifact-provenance correction
+
+- The validated four-view full output tag is
+  `xuelong_upright_4v_full_validated` for capture
+  `depthkit_xuelong_10v_upright`.
+- Its generated 3D artifacts are rooted at
+  `output/ma_3d/xuelong_upright_4v_full_validated/depthkit_xuelong_10v_upright/`.
+  The 827-frame and 1,203-frame results are in the
+  `DELL_001_001_02_Xuelong_04_10_16_38_34/` and
+  `DELL_001_001_06_Xuelong_04_10_18_05_51/` children, respectively.
+- Matching 2D evidence is rooted at
+  `output/ma_2d/xuelong_upright_4v_full_validated/depthkit_xuelong_10v_upright/`.
+  These paths are generated local artifacts and remain uncommitted.
+
+## 2026-08-09 - Depthkit 6/8-view validation-provenance correction
+
+- The materialization-only validation used
+  `data/depthkit_xuelong_10v_upright/capture.json` with
+  `configs/experiments/depthkit-quick-6view.yaml`,
+  `configs/experiments/depthkit-full-6view.yaml`,
+  `configs/experiments/depthkit-quick-8view.yaml`, and
+  `configs/experiments/depthkit-full-8view.yaml`.
+- The six-view camera set was `cam_01, cam_02, cam_03, cam_04, cam_06, cam_08`;
+  the eight-view set added `cam_09, cam_10`. Both capture recordings were bound
+  by the materializer.
+- This validation parsed, materialized, and schema-checked the presets only. It
+  did not dispatch pipeline stages, assign output tags, or produce artifacts,
+  so there are no 6/8-view artifact paths or reconstruction results to report.
+- Next action: run the eight-view upstream evidence once under a new output tag,
+  then reuse compatible masks, identities, and 2D landmarks for nested 6/4-view
+  `ma_3d` runs with distinct tags. Record per-camera failures and artifact paths
+  before comparing reconstruction quality.
+
+## 2026-08-09 - Depthkit four-view next-action correction
+
+- Preserve `xuelong_upright_4v_full_validated` and its generated 2D/3D
+  artifacts as the distorted-RGB four-view reference; do not rerun or overwrite
+  that tag.
+- Next action: prepare a new capture with rectified RGB footage and matching
+  intrinsics, run eight-view upstream evidence under a new tag, and reuse that
+  evidence for nested six- and four-view `ma_3d` tags. Compare those controlled
+  results with the preserved reference and record new artifact paths and
+  per-camera reprojection failures in a dated entry.

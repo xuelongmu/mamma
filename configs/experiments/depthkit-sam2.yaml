@@ -1,0 +1,13 @@
+# More permissive single-person settings for wide Depthkit studio views.
+scene:
+  expected_subjects: 1
+matching:
+  yolo_person_conf: 0.25
+  min_mask_area_ratio: 0.001
+masks:
+  discard_tiny_tracklets: true
+  tiny_tracklet_min_area_ratio: 0.001
+  tiny_tracklet_min_frame_ratio: 0.2
+sam:
+  offload_video_to_cpu: true
+  offload_state_to_cpu: true
