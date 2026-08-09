@@ -55,7 +55,7 @@ anything:
 ```bash
 micromamba run -n mamma python \
   scripts/preprocessing/depthkit/prepare_depthkit_for_mamma.py \
-  /mnt/d/dynamic-splat/test_data/Xuelong /tmp/unused --validate-only
+  /path/to/depthkit-project --validate-only
 ```
 
 The source Xuelong videos are sideways. Rotate every stream counter-clockwise
@@ -65,7 +65,7 @@ extrinsics in the same operation:
 ```bash
 micromamba run -n mamma python \
   scripts/preprocessing/depthkit/prepare_depthkit_for_mamma.py \
-  /mnt/d/dynamic-splat/test_data/Xuelong data/xuelong_depthkit \
+  /path/to/depthkit-project data/xuelong_depthkit \
   --rotate ccw --video-mode reencode
 ```
 
@@ -112,8 +112,6 @@ baseline.
 Start each camera count with its 30-frame interval:
 
 ```bash
-LD_LIBRARY_PATH=/home/xuelong/micromamba/envs/mamma/lib \
-__EGL_VENDOR_LIBRARY_DIRS=/home/xuelong/micromamba/envs/mamma/share/glvnd/egl_vendor.d \
 MPLBACKEND=Agg \
 micromamba run -n mamma python -m inference run \
   --cfg configs/experiments/depthkit-quick-<subset>.yaml \
@@ -128,8 +126,6 @@ After masks, identities, 2D landmarks, reprojections, scale, and orientation
 look plausible, process every frame with the matching full preset:
 
 ```bash
-LD_LIBRARY_PATH=/home/xuelong/micromamba/envs/mamma/lib \
-__EGL_VENDOR_LIBRARY_DIRS=/home/xuelong/micromamba/envs/mamma/share/glvnd/egl_vendor.d \
 MPLBACKEND=Agg \
 micromamba run -n mamma python -m inference run \
   --cfg configs/experiments/depthkit-full-<subset>.yaml \
@@ -159,8 +155,6 @@ selected synchronized source cameras remain in the bottom filmstrip:
 
 ```bash
 PYOPENGL_PLATFORM=egl \
-LD_LIBRARY_PATH=/home/xuelong/micromamba/envs/mamma/lib \
-__EGL_VENDOR_LIBRARY_DIRS=/home/xuelong/micromamba/envs/mamma/share/glvnd/egl_vendor.d \
 micromamba run -n mamma python scripts/render_share_video.py \
   --ma-3d-dir output/ma_3d/<tag>/<capture>/<sequence> \
   --ma-2d-dir output/ma_2d/<tag>/<capture>/<sequence> \
@@ -181,5 +175,5 @@ full timeline and filmstrip, avoiding unconstrained entrance/exit poses without
 trimming the clip.
 
 Use [`viewer.md`](viewer.md) for source-frame offsets, deliverable validation,
-and interactive Rerun handoff. Keep generated footage, reconstructions, and
-`.rrd` files out of git.
+interactive Rerun handoff, and any host-specific EGL environment setup. Keep
+generated footage, reconstructions, and `.rrd` files out of git.

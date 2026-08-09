@@ -5,6 +5,7 @@ import sys
 import tempfile
 import unittest
 from pathlib import Path
+from unittest import mock
 
 import numpy as np
 
@@ -149,6 +150,19 @@ class PublicationTests(unittest.TestCase):
             self.assertEqual(action, "copy")
             self.assertEqual(destination.read_bytes(), b"new video")
             self.assertFalse((root / ".destination.partial.mp4").exists())
+
+
+class ArgumentTests(unittest.TestCase):
+    def test_validate_only_does_not_require_output_path(self):
+        with mock.patch.object(
+            sys,
+            "argv",
+            ["prepare_depthkit_for_mamma.py", "/capture", "--validate-only"],
+        ):
+            arguments = converter.parse_args()
+        self.assertEqual(arguments.project, Path("/capture"))
+        self.assertIsNone(arguments.output)
+        self.assertTrue(arguments.validate_only)
 
 
 if __name__ == "__main__":

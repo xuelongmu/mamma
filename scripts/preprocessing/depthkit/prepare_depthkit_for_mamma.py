@@ -480,7 +480,12 @@ def parse_args() -> argparse.Namespace:
     parser.add_argument(
         "project", type=Path, help="Depthkit project root or dkproject.json"
     )
-    parser.add_argument("output", type=Path, help="Prepared MAMMA dataset directory")
+    parser.add_argument(
+        "output",
+        nargs="?",
+        type=Path,
+        help="Prepared MAMMA dataset directory; omit with --validate-only",
+    )
     parser.add_argument(
         "recordings",
         nargs="*",
@@ -556,6 +561,8 @@ def main() -> None:
     if args.validate_only:
         return
 
+    if args.output is None:
+        raise ConversionError("Output is required unless --validate-only is set")
     output = args.output.resolve()
     if (
         output == project_root

@@ -20,7 +20,7 @@ Validate every recording whose RGB assets are present:
 
 ```bash
 micromamba run -n mamma python scripts/preprocessing/depthkit/prepare_depthkit_for_mamma.py \
-  /path/to/depthkit-project /tmp/unused --validate-only
+  /path/to/depthkit-project --validate-only
 ```
 
 Prepare them under MAMMA's ignored `data/` directory:
@@ -46,8 +46,6 @@ destination videos without re-encoding them.
 Run a quick end-to-end solve:
 
 ```bash
-LD_LIBRARY_PATH=/home/xuelong/micromamba/envs/mamma/lib \
-__EGL_VENDOR_LIBRARY_DIRS=/home/xuelong/micromamba/envs/mamma/share/glvnd/egl_vendor.d \
 MPLBACKEND=Agg \
 micromamba run -n mamma python -m inference run \
   --cfg configs/experiments/depthkit-quick-first4.yaml \
