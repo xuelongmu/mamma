@@ -663,6 +663,26 @@ def validate_synchronized_streams(
                 )
 
 
+def validate_common_source_fps(
+    takes: dict[str, list[CameraStream]], tolerance: float = 1e-3
+) -> float:
+    first_recording = next(iter(takes.values()))
+    reference_fps = first_recording[0].fps
+    for name, cameras in takes.items():
+        for camera in cameras:
+            if not math.isclose(
+                camera.fps,
+                reference_fps,
+                rel_tol=0.0,
+                abs_tol=tolerance,
+            ):
+                raise ConversionError(
+                    f"Source frame rates are not synchronized: {name!r}/{camera.name} "
+                    f"reports {camera.fps:g} fps, expected {reference_fps:g} fps"
+                )
+    return reference_fps
+
+
 def validate_calibration_only_manifest(
     output: Path,
     rotation: str,
@@ -841,6 +861,7 @@ def main() -> None:
         name: gather_recording(project_root, project, name) for name in recording_names
     }
     validate_synchronized_streams(takes)
+    source_fps = validate_common_source_fps(takes)
     first = next(iter(takes.values()))
     expected_rig = [(camera.name, camera.device_id) for camera in first]
     for name, cameras in takes.items():
@@ -849,7 +870,7 @@ def main() -> None:
             raise ConversionError(
                 f"Recording {name!r} does not use the same camera rig"
             )
-    fps = int(args.fps if args.fps is not None else round(first[0].fps))
+    fps = int(args.fps if args.fps is not None else round(source_fps))
     if fps <= 0:
         raise ConversionError("Cannot derive a positive integral output FPS")
     score = camera_look_at_score(first, args.color_extrinsics_direction)

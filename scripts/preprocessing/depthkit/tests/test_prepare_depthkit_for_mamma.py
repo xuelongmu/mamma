@@ -252,6 +252,18 @@ class PublicationTests(unittest.TestCase):
         with self.assertRaisesRegex(converter.ConversionError, "dropped capture"):
             converter.validate_synchronized_streams({"take": [dropped_camera]})
 
+    def test_mismatched_source_camera_rates_are_rejected(self):
+        first = camera_stream(Path("first"), name="cam_01", device_id="device_1")
+        second = camera_stream(Path("second"), name="cam_02", device_id="device_2")
+        second = converter.CameraStream(
+            **{
+                **second.__dict__,
+                "fps": 25.0,
+            }
+        )
+        with self.assertRaisesRegex(converter.ConversionError, "not synchronized"):
+            converter.validate_common_source_fps({"take": [first, second]})
+
     def test_copy_overwrite_publishes_complete_replacement(self):
         with tempfile.TemporaryDirectory() as directory:
             root = Path(directory)
