@@ -60,11 +60,15 @@ conversion manifest, as must the source project, calibration hash, recordings,
 cameras, source paths, device IDs, and video fingerprints.
 After all reused videos pass those checks, calibration-only overwrite withdraws
 the complete old descriptor set before publishing any replacement metadata.
+The destination path, prepared frame count, size, and modification-time
+fingerprint must also match the prior manifest.
 
 Every participating device in an explicitly selected recording must have a
 color stream. Without `--overwrite`, the adapter preflights all descriptors and
 camera destinations before preparing the first video, so a late conflict cannot
 leave published metadata beside partially replaced footage.
+Overwrite mode likewise validates every requested effective video mode and
+destination type before withdrawing the existing descriptors.
 
 Run a quick end-to-end solve:
 

@@ -92,6 +92,8 @@ recording and camera sets, source paths, device IDs, and video fingerprints to
 match; otherwise, prepare the videos again rather than publishing mismatched
 provenance. Only after every reused video passes does calibration-only
 overwrite withdraw the old descriptor set and publish replacement metadata.
+Reuse also requires the prepared path, frame count, size, and modification-time
+fingerprint recorded by the prior manifest to match the destination video.
 
 ## Validate before MAMMA
 

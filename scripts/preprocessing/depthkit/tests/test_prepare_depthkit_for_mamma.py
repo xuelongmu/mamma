@@ -216,6 +216,42 @@ class CalibrationTests(unittest.TestCase):
 
 
 class PublicationTests(unittest.TestCase):
+    def test_overwrite_preflight_preserves_descriptors_on_invalid_mode(self):
+        with tempfile.TemporaryDirectory() as directory:
+            output = Path(directory)
+            names = (
+                "calibration.json",
+                "capture.json",
+                "conversion_manifest.json",
+            )
+            for name in names:
+                (output / name).write_text("old", encoding="utf-8")
+            source = output / "source.mp4"
+            source.write_bytes(b"video")
+            with self.assertRaisesRegex(converter.ConversionError, "cannot apply"):
+                converter.preflight_overwrite(
+                    output,
+                    {"take": [camera_stream(source)]},
+                    mode="copy",
+                    target_fps=30,
+                    rotation="ccw",
+                )
+            self.assertTrue(all((output / name).is_file() for name in names))
+
+    def test_calibration_only_rejects_changed_prepared_video(self):
+        with tempfile.TemporaryDirectory() as directory:
+            destination = Path(directory) / "prepared.mp4"
+            destination.write_bytes(b"prepared video")
+            prior = {
+                "prepared": str(destination),
+                "prepared_frames": 10,
+                "prepared_fingerprint": converter.file_fingerprint(destination),
+            }
+            converter.validate_prepared_video_identity(prior, destination, 10)
+            destination.write_bytes(b"replaced prepared video")
+            with self.assertRaisesRegex(converter.ConversionError, "changed"):
+                converter.validate_prepared_video_identity(prior, destination, 10)
+
     def test_non_overwrite_preflight_prevents_partial_video_writes(self):
         with tempfile.TemporaryDirectory() as directory:
             root = Path(directory)

@@ -577,6 +577,34 @@ def preflight_non_overwrite(
             )
 
 
+def preflight_overwrite(
+    output: Path,
+    takes: dict[str, list[CameraStream]],
+    mode: str,
+    target_fps: float,
+    rotation: str,
+) -> None:
+    for recording_name, cameras in takes.items():
+        for camera in cameras:
+            effective_video_mode(camera, mode, target_fps, rotation)
+            destination = output / recording_name / "videos" / f"{camera.name}.mp4"
+            if destination.is_dir() or (
+                destination.is_symlink() and not destination.is_file()
+            ):
+                raise ConversionError(
+                    f"Expected a video file but found a directory: {destination}"
+                )
+            temporary = destination.with_name(
+                f".{destination.stem}.partial{destination.suffix}"
+            )
+            if temporary.is_dir() or (
+                temporary.is_symlink() and not temporary.is_file()
+            ):
+                raise ConversionError(
+                    f"Expected a temporary video file but found a directory: {temporary}"
+                )
+
+
 def sha256_file(path: Path) -> str:
     digest = hashlib.sha256()
     with path.open("rb") as handle:
@@ -585,12 +613,37 @@ def sha256_file(path: Path) -> str:
     return digest.hexdigest()
 
 
-def source_fingerprint(camera: CameraStream) -> dict[str, Any]:
-    stat = camera.source.stat()
+def file_fingerprint(path: Path) -> dict[str, Any]:
+    stat = path.stat()
     return {
         "size_bytes": stat.st_size,
         "mtime_ns": stat.st_mtime_ns,
     }
+
+
+def source_fingerprint(camera: CameraStream) -> dict[str, Any]:
+    return file_fingerprint(camera.source)
+
+
+def validate_prepared_video_identity(
+    prior: dict[str, Any], destination: Path, prepared_frames: int
+) -> None:
+    try:
+        prior_path = Path(prior["prepared"]).resolve()
+        prior_frames = int(prior["prepared_frames"])
+        prior_fingerprint = prior["prepared_fingerprint"]
+    except (KeyError, TypeError, ValueError) as exc:
+        raise ConversionError(
+            f"--calibration-only lacks prepared-video identity for {destination}"
+        ) from exc
+    if (
+        prior_path != destination.resolve()
+        or prior_frames != prepared_frames
+        or prior_fingerprint != file_fingerprint(destination)
+    ):
+        raise ConversionError(
+            f"--calibration-only prepared video changed: {destination}"
+        )
 
 
 def invalidate_capture_descriptors(output: Path) -> None:
@@ -723,7 +776,7 @@ def validate_calibration_only_manifest(
     rotation: str,
     project_root: Path,
     takes: dict[str, list[CameraStream]],
-) -> None:
+) -> dict[str, Any]:
     manifest_path = output / "conversion_manifest.json"
     try:
         manifest = load_json(manifest_path)
@@ -798,6 +851,7 @@ def validate_calibration_only_manifest(
                 raise ConversionError(
                     f"--calibration-only source changed for {name!r}/{camera.name}"
                 )
+    return manifest
 
 
 def calibrations_match(
@@ -950,6 +1004,7 @@ def main() -> None:
         )
     output.mkdir(parents=True, exist_ok=True)
 
+    prior_manifest: dict[str, Any] | None = None
     if not args.calibration_only and not args.overwrite:
         preflight_non_overwrite(
             output,
@@ -959,13 +1014,20 @@ def main() -> None:
             args.rotate,
         )
     if args.calibration_only:
-        validate_calibration_only_manifest(
+        prior_manifest = validate_calibration_only_manifest(
             output,
             args.rotate,
             project_root,
             takes,
         )
     elif args.overwrite:
+        preflight_overwrite(
+            output,
+            takes,
+            args.video_mode,
+            fps,
+            args.rotate,
+        )
         invalidate_capture_descriptors(output)
 
     manifest_takes: dict[str, Any] = {}
@@ -993,6 +1055,17 @@ def main() -> None:
                     raise ConversionError(
                         f"Existing {destination} is {prepared_fps:g} fps; expected {fps:g}"
                     )
+                assert prior_manifest is not None
+                prior = next(
+                    record
+                    for record in prior_manifest["recordings"][name]
+                    if record["camera"] == camera.name
+                )
+                validate_prepared_video_identity(
+                    prior,
+                    destination,
+                    prepared_frames,
+                )
                 action = "existing"
             else:
                 action = prepare_video(
@@ -1028,6 +1101,7 @@ def main() -> None:
                     "fps": camera.fps,
                     "source_frames": camera.frame_count,
                     "prepared_frames": prepared_frames,
+                    "prepared_fingerprint": file_fingerprint(destination),
                     "source_fingerprint": source_fingerprint(camera),
                     "sync_offset": camera.stream.get("syncOffset"),
                     "dropped_frames": camera.stream.get("numDroppedFrames", 0),

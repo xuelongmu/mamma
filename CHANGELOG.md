@@ -97,5 +97,7 @@ machine-local progress belong in [`docs/status.md`](docs/status.md).
   camera and recording before any all-stream rate conformance.
 - Depthkit conversion requires equivalent synchronization offsets within each
   take instead of publishing unshifted, frame-misaligned camera streams.
+- Overwrite requests preflight every effective video mode before descriptor
+  invalidation, and calibration-only reuse verifies prepared-video identity.
 - Share-video visibility gating tracks each reconstructed body independently.
 - Share-video camera selections reject duplicate names before visibility counts.
