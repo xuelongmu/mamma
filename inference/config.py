@@ -44,7 +44,9 @@ pointer-style error messages so users can fix their config quickly.
 from __future__ import annotations
 
 import json
+import math
 import os
+import shlex
 import warnings
 from typing import List
 
@@ -211,6 +213,43 @@ def load_run_config(path: str) -> dict:
     return cfg
 
 
+def _derive_effective_cam_fps(cfg: dict) -> None:
+    """Record the capture rate after applying ma_cap's final --fps override."""
+    global_cfg = cfg.get("global")
+    if not isinstance(global_cfg, dict):
+        return
+    effective_fps = global_cfg.get("cam_fps")
+    ma_cap = cfg.get("ma_cap")
+    raw_flags = ma_cap.get("flags", []) if isinstance(ma_cap, dict) else []
+    flags: list[str] = []
+    for raw_flag in raw_flags or []:
+        flags.extend(shlex.split(str(raw_flag)))
+    for index, flag in enumerate(flags):
+        value: str | None = None
+        if flag == "--fps":
+            if index + 1 >= len(flags):
+                raise TaskConfigError("ma_cap.flags: --fps requires a value")
+            value = flags[index + 1]
+        elif flag.startswith("--fps="):
+            value = flag.split("=", 1)[1]
+        if value is not None:
+            try:
+                parsed = int(value)
+            except (TypeError, ValueError) as exc:
+                raise TaskConfigError(
+                    f"ma_cap.flags: --fps must be a positive integer, got {value!r}"
+                ) from exc
+            if parsed <= 0:
+                raise TaskConfigError(
+                    f"ma_cap.flags: --fps must be a positive integer, got {value!r}"
+                )
+            effective_fps = parsed
+    if effective_fps is None:
+        global_cfg.pop("effective_cam_fps", None)
+    else:
+        global_cfg["effective_cam_fps"] = effective_fps
+
+
 def load_task(path: str) -> dict:
     """Deprecated alias for :func:`load_run_config`.
 
@@ -323,6 +362,24 @@ def materialize_run_config(
     g["source_pixel_space"] = capture_data.get(
         "source_pixel_space", g.get("source_pixel_space", "unknown")
     )
+    if capture_data.get("cam_fps") is not None:
+        raw_capture_fps = capture_data["cam_fps"]
+        try:
+            capture_fps = float(raw_capture_fps)
+        except (TypeError, ValueError) as exc:
+            raise TaskConfigError(
+                f"capture.cam_fps: expected a positive integer, got {raw_capture_fps!r}"
+            ) from exc
+        if (
+            isinstance(raw_capture_fps, bool)
+            or not math.isfinite(capture_fps)
+            or capture_fps <= 0
+            or not capture_fps.is_integer()
+        ):
+            raise TaskConfigError(
+                f"capture.cam_fps: expected a positive integer, got {raw_capture_fps!r}"
+            )
+        g["cam_fps"] = int(capture_fps)
 
     if seq_ids is None and seq_names is not None:
         seq_ids = _seq_ids_from_names_in_data(capture_data, seq_names)
@@ -371,6 +428,8 @@ def materialize_run_config(
         derived = _derive_calibration(capture_path, capture_data)
         if derived:
             ma_cap["calibration"] = derived
+
+    _derive_effective_cam_fps(cfg)
 
     if enabled_steps is not None:
         wanted = set(enabled_steps)
@@ -497,6 +556,7 @@ def _derive_dataset_name(capture_path: str) -> str:
 
 def validate(cfg: dict) -> None:
     """Field-by-field check. Raises :class:`TaskConfigError` on the first issue."""
+    _derive_effective_cam_fps(cfg)
     errors: List[str] = []
 
     g = cfg.get("global")

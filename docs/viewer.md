@@ -81,6 +81,7 @@ the `world` root:
 | --- | --- | --- |
 | X-up | `--up-axis x` | `RIGHT_HAND_X_UP` |
 | Y-up | `--up-axis y` | `RIGHT_HAND_Y_UP` |
+| Y-down | `--up-axis y-down` | `RIGHT_HAND_Y_DOWN` |
 | Z-up | `--up-axis z` | `RIGHT_HAND_Z_UP` |
 
 SJTU sports footage is X-up. Verify that people stand upright and that the
@@ -118,8 +119,16 @@ with the camera filmstrip:
 `--start-frame` selects a local mesh frame at which to begin rendering; it does
 not replace the source offset. The source video seek is the sum of both values.
 
-The share renderer converts SJTU X-up vertices to a conventional Y-up display
-space. Do not apply a second rotation to already-converted vertices.
+The share renderer converts its configured world-up axis to a conventional
+right-handed Y-up display space. SJTU is X-up, which is the default. For the
+validated Depthkit conversion use `--up-axis y-down`; do not apply a second
+rotation to already-converted vertices.
+
+Use `--azimuth-degrees` to orbit the virtual camera around the reconstruction.
+Add `--secondary-azimuth-degrees` to place the opposite perspective beside it
+in the main panel. When `--ma-2d-dir` points to the sequence's landmark NPZs,
+the renderer preserves the full timeline and filmstrip but hides meshes on
+frames constrained by fewer than `--min-visible-cameras` selected views.
 
 Validate a deliverable before sharing:
 

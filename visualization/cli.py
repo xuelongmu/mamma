@@ -90,8 +90,10 @@ def _build_parser() -> argparse.ArgumentParser:
                    nargs="+", default=None,
                    help="Subset of cameras to render as overlay mp4s + preview.")
 
-    p.add_argument("--up-axis", "--up_axis", default="z", choices=["x", "y", "z"],
-                   help="World up axis (default: z).")
+    p.add_argument("--up-axis", "--up_axis", default="z",
+                   choices=["x", "y", "-y", "y-down", "z"],
+                   help="World up axis (default: z); use y-down for Y-down worlds. "
+                        "The --up-axis=-y form is retained for config compatibility.")
     p.add_argument("--fps", type=int, default=30,
                    help="FPS for both the Rerun timeline and overlay videos.")
     p.add_argument("--rerun-display-scale", "--rerun_display_scale",

@@ -151,6 +151,9 @@ optimization. Use an end-to-end preset when evaluating reconstructed bodies.
 For SJTU-specific subsets and cache reuse, see
 [`sjtu-sports.md`](sjtu-sports.md).
 
+For Depthkit/Scatter calibration conversion, footage conformance, and the
+validated Xuelong 4/6/8-view workflow, see [`depthkit.md`](depthkit.md).
+
 ## Visual validation
 
 A successful exit code is necessary but insufficient. Inspect:

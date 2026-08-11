@@ -50,5 +50,10 @@ class MaVisBuilder(StepBuilder):
             ]
             argv += calibration_flag
         argv += self._distortion_mode_flag()
-        argv += self.flags
+        flags = self.flags
+        if not any(flag == "--fps" or flag.startswith("--fps=") for flag in flags):
+            capture_fps = self.effective_cam_fps
+            if capture_fps is not None:
+                argv += ["--fps", str(capture_fps)]
+        argv += flags
         return argv

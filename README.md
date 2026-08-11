@@ -151,6 +151,7 @@ Five dataset families ship: **dance**, **multi-person**, **iPhone**, **eval**, a
 - [`docs/local-runbook.md`](docs/local-runbook.md) covers local execution and recovery.
 - [`docs/viewer.md`](docs/viewer.md) gives the exact Rerun server URL and share-video workflow.
 - [`docs/sjtu-sports.md`](docs/sjtu-sports.md) documents sports calibration, camera subsets, and ablations.
+- [`docs/depthkit.md`](docs/depthkit.md) documents Depthkit/Scatter calibration conversion and the 4/6/8-view workflow.
 - [`CHANGELOG.md`](CHANGELOG.md) records repository-visible changes.
 
 Contributor and agent expectations are in [`AGENTS.md`](AGENTS.md).
