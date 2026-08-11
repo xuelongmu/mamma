@@ -28,6 +28,7 @@ class MaCapBuilder(StepBuilder):
             argv += ["--cam_names", *self.cam_names]
         argv += ["--out", self.step_out_dir(with_dataset=True)]
         argv += ["--seq_name", seq_name]
+        argv += self._source_pixel_space_flag()
         # ma_cap owns the canonical frame range for the run. Downstream
         # steps inherit it via per-camera NPZ (frame_start / frame_end),
         # so only this builder emits --start / --end.

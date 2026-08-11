@@ -53,6 +53,8 @@ from typing import List
 from .runner import ALL_STEPS
 
 VALID_ENGINES = ("conda", "apptainer", "docker")
+VALID_DISTORTION_MODES = ("auto", "undistort", "raw")
+VALID_SOURCE_PIXEL_SPACES = ("raw_distorted", "pinhole_undistorted", "unknown")
 
 _YAML_SUFFIXES = (".yaml", ".yml")
 _JSON_SUFFIXES = (".json",)
@@ -91,6 +93,7 @@ def synthesize_capture(
     footage_dir: str,
     calib_path: str,
     seq_name: str,
+    source_pixel_space: str = "unknown",
 ) -> dict:
     """Build an in-memory capture-config dict for one sequence.
 
@@ -131,6 +134,13 @@ def synthesize_capture(
     """
     import os
     from pathlib import Path
+
+    source_pixel_space = str(source_pixel_space).lower()
+    if source_pixel_space not in VALID_SOURCE_PIXEL_SPACES:
+        raise ValueError(
+            f"source_pixel_space must be one of {VALID_SOURCE_PIXEL_SPACES}, "
+            f"got {source_pixel_space!r}"
+        )
 
     footage = Path(footage_dir).resolve()
     if not footage.is_dir():
@@ -185,6 +195,7 @@ def synthesize_capture(
         "cam_fps": 30,
         "cams": cams,
         "sequences": {"000": {"name": seq_name}},
+        "source_pixel_space": source_pixel_space,
     }
     if layout == "videos" and videos_subdir and videos_subdir != "videos_crf24":
         capture["videos_subdir"] = videos_subdir
@@ -348,6 +359,9 @@ def materialize_run_config(
     cfg.setdefault("global", {})
     g = cfg["global"]
     g["capture_json"] = capture_path
+    g["source_pixel_space"] = capture_data.get(
+        "source_pixel_space", g.get("source_pixel_space", "unknown")
+    )
     if capture_data.get("cam_fps") is not None:
         raw_capture_fps = capture_data["cam_fps"]
         try:
@@ -564,6 +578,29 @@ def validate(cfg: dict) -> None:
     seq_ids = g.get("seq_ids", [])
     if seq_ids and not all(isinstance(s, int) for s in seq_ids):
         errors.append("global.seq_ids: must be a list of integers")
+
+    distortion_mode = str(g.get("distortion_mode", "auto")).lower()
+    if distortion_mode not in VALID_DISTORTION_MODES:
+        errors.append(
+            f"global.distortion_mode: {distortion_mode!r} not in "
+            f"{VALID_DISTORTION_MODES}"
+        )
+    source_pixel_space = str(g.get("source_pixel_space", "unknown")).lower()
+    if source_pixel_space not in VALID_SOURCE_PIXEL_SPACES:
+        errors.append(
+            f"global.source_pixel_space: {source_pixel_space!r} not in "
+            f"{VALID_SOURCE_PIXEL_SPACES}"
+        )
+    if "distortion_mode" in g and "undistort" in g:
+        errors.append(
+            "global: distortion_mode conflicts with deprecated undistort; set only distortion_mode"
+        )
+    if "distortion_mode" in g:
+        for step in ("ma_masks", "ma_2d", "ma_vis"):
+            if isinstance(cfg.get(step), dict) and "undistort" in cfg[step]:
+                errors.append(
+                    f"{step}.undistort conflicts with global.distortion_mode; remove the deprecated field"
+                )
 
     enabled_count = 0
     for step in ALL_STEPS:

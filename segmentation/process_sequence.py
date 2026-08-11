@@ -252,7 +252,9 @@ def process_seq(
     images_root_dir=None,
     interactive=False,
     undistort=False,
+    distortion_mode=None,
     calibration_path=None,
+    source_pixel_space=None,
 ):
     if not yolo_checkpoint:
         raise ValueError(
@@ -352,7 +354,11 @@ def process_seq(
                 cam = str(cd['cam_name'])
                 if cam in npz_by_cam:
                     npz_data = load_npz_as_dict(npz_by_cam[cam])
-                    for key in ('cam_int', 'cam_ext', 'cam_img_h', 'cam_img_w'):
+                    for key in (
+                        'cam_int', 'cam_ext', 'cam_img_h', 'cam_img_w',
+                        'distortion_model', 'distortion_coeffs', 'vicon_radial_2',
+                        'source_pixel_space', 'pixel_space',
+                    ):
                         if key in npz_data:
                             cd[key] = npz_data[key]
                     _log("INFO", f"  {cam}: calibration injected from NPZ.")
@@ -381,12 +387,15 @@ def process_seq(
         effective_start_frame = start_frame
         effective_end_frame = end_frame
 
-    # Optional: attach per-camera undistortion to every cam_data so the
-    # downstream pipeline's frame_source_from_cam_data calls pick it up
-    # transparently. No-op when --undistort isn't set.
-    if undistort:
-        if not calibration_path:
-            raise ValueError("process_seq(undistort=True) requires calibration_path")
+    # Resolve distortion once and attach the same policy to every frame source.
+    # ``undistort`` is the legacy direct-call alias.
+    if distortion_mode is None:
+        distortion_mode = 'undistort' if undistort else 'auto'
+    if distortion_mode not in ('auto', 'undistort', 'raw'):
+        raise ValueError(f"invalid distortion_mode: {distortion_mode!r}")
+
+    calib_cams = {}
+    if calibration_path:
         # capture/ lives in the superproject; this script is invoked
         # with cwd=segmentation/, so push the repo root onto sys.path.
         import os as _os, sys as _sys
@@ -395,15 +404,66 @@ def process_seq(
             _sys.path.insert(0, _repo_root)
         from capture import load_calibration  # noqa: E402
         calib_cams = load_calibration(calibration_path).cameras
-        for cd in cam_data_list:
-            cam_name = str(cd.get('cam_name', ''))
-            cam = calib_cams.get(cam_name)
-            if cam is None:
-                _log("WARN", f"--undistort: no calibration for camera {cam_name!r}; skipping undistort")
-                continue
-            cd['_undistort_camera'] = cam
-            cd['_undistort'] = True
-        _log("INFO", f"--undistort: enabled for {sum(1 for cd in cam_data_list if cd.get('_undistort'))} of {len(cam_data_list)} cameras")
+    elif (videos_dir or images_root_dir) and distortion_mode in ('auto', 'undistort'):
+        raise ValueError(
+            f"standalone distortion_mode={distortion_mode!r} requires calibration_path"
+        )
+
+    from capture.geometry import (  # noqa: E402
+        geometry_record_from_cam_data,
+        write_geometry_manifest,
+    )
+    for cd in cam_data_list:
+        cam_name = str(cd.get('cam_name', ''))
+        cam = calib_cams.get(cam_name)
+        if (
+            cam is None
+            and (videos_dir or images_root_dir)
+            and distortion_mode in ('auto', 'undistort')
+        ):
+            raise ValueError(
+                f"distortion_mode={distortion_mode!r}: calibration has no "
+                f"entry for camera {cam_name!r}"
+            )
+        if cam is not None:
+            cd['_distortion_camera'] = cam
+            cd.setdefault('cam_int', np.asarray(cam.intrinsics, dtype=np.float64))
+            cd.setdefault('cam_ext', np.asarray(cam.T_cam_world, dtype=np.float64))
+            cd.setdefault('cam_img_w', int(cam.width))
+            cd.setdefault('cam_img_h', int(cam.height))
+            cd.setdefault('distortion_model', np.array(cam.distortion_model))
+            cd.setdefault(
+                'distortion_coeffs',
+                np.asarray(cam.distortion_coeffs, dtype=np.float64),
+            )
+        if source_pixel_space is not None and (videos_dir or images_root_dir):
+            cd['source_pixel_space'] = np.array(source_pixel_space)
+        cd['_distortion_mode'] = distortion_mode
+
+    geometry_records = [
+        geometry_record_from_cam_data(cd, distortion_mode) for cd in cam_data_list
+    ]
+    from capture.geometry import load_geometry_manifest, validate_geometry_manifest  # noqa: E402
+    existing_geometry = load_geometry_manifest(seq_out_path)
+    cached_masks = any(
+        name == 'masks.npy' or name.startswith('mask_')
+        for _root, _dirs, files in os.walk(seq_out_path)
+        for name in files
+    )
+    if existing_geometry is not None:
+        validate_geometry_manifest(seq_out_path, geometry_records, 'ma_masks cached output')
+    elif cached_masks:
+        raise ValueError(
+            f"ma_masks: cached masks in {seq_out_path} have no geometry.json; "
+            "use a new output tag or explicitly migrate the cache"
+        )
+    write_geometry_manifest(seq_out_path, 'ma_masks', geometry_records)
+    remapped = sum(1 for record in geometry_records if record['remapped'])
+    _log(
+        "INFO",
+        f"distortion_mode={distortion_mode}: canonicalized {remapped}/"
+        f"{len(geometry_records)} cameras; geometry manifest written",
+    )
 
     n_cameras = len(cam_data_list)
     _log("INFO", f"Sequence: {data_folder} -> {seq_out_path}")

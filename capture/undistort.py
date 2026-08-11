@@ -1,4 +1,10 @@
-"""Vicon-radial-2 frame undistortion for the inference pipeline.
+"""Frame undistortion for the inference pipeline.
+
+Supported models:
+
+* ``radtan`` / ``opencv_brown`` use OpenCV Brown-Conrady coefficients and
+  are rectified into the original camera matrix ``K``.
+* ``vicon_radial_2`` uses Vicon's pixel-space radial model.
 
 The Vicon distortion model is **not** OpenCV-compatible: it applies a
 radial correction in raw pixel-space coordinates rather than in
@@ -30,7 +36,7 @@ import numpy as np
 from .calibration import Camera
 
 
-_CACHE: Dict[Tuple[str, str, int, int], Tuple[np.ndarray, np.ndarray]] = {}
+_CACHE: Dict[tuple, Tuple[np.ndarray, np.ndarray]] = {}
 _CACHE_LOCK = threading.Lock()
 
 
@@ -48,30 +54,45 @@ def _radial_correction(
 
 
 def _build_maps(camera: Camera) -> Tuple[np.ndarray, np.ndarray]:
-    """Build ``cv2.remap``-compatible (map_x, map_y) for one camera."""
-    pp_x, pp_y, rad_1, rad_2, rad_3 = camera.distortion_coeffs
-    w, h = camera.width, camera.height
-    x_coords, y_coords = np.meshgrid(np.arange(w), np.arange(h))
-    map_x_flat, map_y_flat = _radial_correction(
-        x_coords.flatten().astype(np.float64),
-        y_coords.flatten().astype(np.float64),
-        float(pp_x), float(pp_y),
-        float(rad_1), float(rad_2), float(rad_3),
-    )
-    return (
-        map_x_flat.reshape(h, w).astype(np.float32),
-        map_y_flat.reshape(h, w).astype(np.float32),
+    """Build ``cv2.remap`` maps into the canonical pinhole ``K`` frame."""
+    w, h = int(camera.width), int(camera.height)
+    if camera.distortion_model == "vicon_radial_2":
+        pp_x, pp_y, rad_1, rad_2, rad_3 = camera.distortion_coeffs[:5]
+        x_coords, y_coords = np.meshgrid(np.arange(w), np.arange(h))
+        map_x_flat, map_y_flat = _radial_correction(
+            x_coords.flatten().astype(np.float64),
+            y_coords.flatten().astype(np.float64),
+            float(pp_x), float(pp_y),
+            float(rad_1), float(rad_2), float(rad_3),
+        )
+        return (
+            map_x_flat.reshape(h, w).astype(np.float32),
+            map_y_flat.reshape(h, w).astype(np.float32),
+        )
+
+    import cv2
+
+    K = np.asarray(camera.intrinsics, dtype=np.float64).reshape(3, 3)
+    dist = np.asarray(camera.distortion_coeffs, dtype=np.float64)
+    return cv2.initUndistortRectifyMap(
+        K, dist, None, K, (w, h), cv2.CV_32FC1
     )
 
 
 def _is_noop(camera: Optional[Camera]) -> bool:
-    """True if undistortion would be the identity (zero / missing coeffs)."""
-    if camera is None or camera.distortion_model != "vicon_radial_2":
+    """True if undistortion would be the identity or is unsupported."""
+    if camera is None:
         return True
-    if len(camera.distortion_coeffs) < 5:
-        return True
-    _, _, rad_1, rad_2, rad_3 = camera.distortion_coeffs
-    return rad_1 == 0.0 and rad_2 == 0.0 and rad_3 == 0.0
+    coeffs = tuple(float(v) for v in (camera.distortion_coeffs or ()))
+    if camera.distortion_model == "vicon_radial_2":
+        if len(coeffs) < 5:
+            return True
+        return all(v == 0.0 for v in coeffs[2:5])
+    if camera.distortion_model in ("radtan", "opencv_brown"):
+        if len(coeffs) < 4:
+            return True
+        return all(v == 0.0 for v in coeffs)
+    return True
 
 
 def get_maps(camera: Camera) -> Optional[Tuple[np.ndarray, np.ndarray]]:
@@ -83,6 +104,8 @@ def get_maps(camera: Camera) -> Optional[Tuple[np.ndarray, np.ndarray]]:
         camera.distortion_model,
         int(camera.width),
         int(camera.height),
+        tuple(float(v) for v in camera.distortion_coeffs),
+        tuple(np.asarray(camera.intrinsics, dtype=np.float64).ravel()),
     )
     with _CACHE_LOCK:
         cached = _CACHE.get(key)

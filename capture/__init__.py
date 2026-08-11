@@ -47,3 +47,20 @@ from .discovery import (  # noqa: F401
 from .undistort import (  # noqa: F401
     undistort_rgb,
 )
+from .geometry import (  # noqa: F401
+    DISTORTION_MODES,
+    GEOMETRY_FILENAME,
+    PINHOLE_SPACE,
+    RAW_SPACE,
+    SOURCE_PIXEL_SPACES,
+    UNKNOWN_SPACE,
+    camera_from_cam_data,
+    geometry_record,
+    geometry_record_from_cam_data,
+    load_geometry_manifest,
+    require_pinhole_optimizer_geometry,
+    resolve_distortion_mode,
+    source_pixel_space_from_cam_data,
+    validate_geometry_manifest,
+    write_geometry_manifest,
+)

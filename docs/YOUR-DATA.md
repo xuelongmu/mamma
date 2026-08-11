@@ -122,6 +122,7 @@ A capture JSON tells the runner where your footage lives and which cameras + seq
   "capture_root":  "../../../data/<your-dataset>",
   "calib":         "../calib/<your-dataset>.yaml",
   "cam_fps":       30,
+  "source_pixel_space": "raw_distorted",
   "videos_subdir": "videos",
   "cams":      ["cam_01", "cam_02", "cam_03", "cam_04"],
   "sequences": {
@@ -136,6 +137,11 @@ Notes:
 - Paths in `capture_root` and `calib` are resolved **relative to the capture JSON file's parent directory**. Use absolute paths if your JSON lives outside `configs/examples/captures/`.
 - For the image-directory layout, set `"videos_subdir": "images"` (or whatever your per-camera subdirectory is called).
 - `cam_fps` is read by `ma_cap` and stamped into the per-camera NPZs the rest of the pipeline consumes.
+- `source_pixel_space` describes the delivered RGB frames independently of
+  the lens coefficients. Set it to `raw_distorted` when frames still use the
+  calibrated lens model, or `pinhole_undistorted` when an exporter has already
+  rectified them. The safe default is `unknown`; `distortion_mode: auto` stops
+  on non-zero distortion until you declare one of the two known spaces.
 
 ---
 
@@ -164,6 +170,7 @@ python -m inference run \
   --footage  data/<your-dataset> \
   --seq_name <sequence_1> \
   --calib    configs/examples/calib/<your-dataset>.yaml \
+  --source-pixel-space raw_distorted \
   --out-tag  run01 -v
 ```
 

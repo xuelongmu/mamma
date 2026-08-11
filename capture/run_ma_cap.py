@@ -50,6 +50,11 @@ if _REPO_ROOT not in sys.path:
     sys.path.insert(0, _REPO_ROOT)
 
 from capture import Camera, load_calibration  # noqa: E402
+from capture.geometry import (  # noqa: E402
+    SOURCE_PIXEL_SPACES,
+    UNKNOWN_SPACE,
+    normalize_source_pixel_space,
+)
 from capture.discovery import find_image_cam_dirs, find_video_files  # noqa: E402
 from capture.video_reader import VideoFrameReader  # noqa: E402
 
@@ -85,6 +90,16 @@ def _build_parser() -> argparse.ArgumentParser:
                    help="Calibration file (yaml/xcp/json). Required with "
                         "--videos_dir or --images_root_dir; overrides capture.json's "
                         "'calib' field when --json is also set.")
+    p.add_argument(
+        "--source-pixel-space",
+        choices=SOURCE_PIXEL_SPACES,
+        default=None,
+        help=(
+            "Pixel space of the delivered RGB frames. Overrides capture.json's "
+            "source_pixel_space. Required for rigorous auto handling when the "
+            "calibration has non-zero lens distortion."
+        ),
+    )
     p.add_argument("--seq_name", required=True,
                    help="Sequence name. With --json, must match capture.json's "
                         "'sequences' entry; with --videos_dir/--images_root_dir, "
@@ -235,6 +250,7 @@ def _write_cam_npz(
     video_path: str = "",
     frame_start: int = 0,
     frame_end: int = None,
+    source_pixel_space: str = UNKNOWN_SPACE,
 ) -> None:
     """Per-camera NPZ matching the downstream-step contract.
 
@@ -255,6 +271,7 @@ def _write_cam_npz(
     cam_int = cam.intrinsics.astype(np.float32)            # (3, 3)
     cam_ext = cam.T_cam_world.astype(np.float32)           # (4, 4) world->cam
 
+    source_pixel_space = normalize_source_pixel_space(source_pixel_space)
     payload: dict = {
         "img_abs_path": np.array(abs_paths),
         "img_rel_path": np.array(rel_paths),
@@ -267,6 +284,15 @@ def _write_cam_npz(
         "frame_start": int(frame_start),
         "frame_end": int(frame_end),
         "video_path": np.array(video_path),  # empty string when image-sourced
+        # Generic lens contract used to canonicalize downstream pixel-space
+        # artifacts. ``cam_int`` remains the projection matrix for the
+        # undistorted pinhole image.
+        "distortion_model": np.array(cam.distortion_model),
+        "distortion_coeffs": np.array(cam.distortion_coeffs, dtype=np.float64),
+        "source_pixel_space": np.array(source_pixel_space),
+        # Legacy alias retained for readers built against the first geometry
+        # contract. It describes the delivered frames, not the lens model.
+        "pixel_space": np.array(source_pixel_space),
         # ``vicon_radial_2`` is only populated when the source format was
         # Vicon XCP (5-param radial). Otherwise leave it None -- downstream
         # consumers already handle the None case.
@@ -357,6 +383,11 @@ def _ingest_json_mode(args):
     ioi_root = capture_cfg.get("capture_root") or capture_cfg["ioi_root"]
     calib_path = args.calibration or capture_cfg["calib"]
     fps = args.fps if args.fps is not None else int(capture_cfg.get("cam_fps", 30))
+    source_pixel_space = (
+        args.source_pixel_space
+        if args.source_pixel_space is not None
+        else capture_cfg.get("source_pixel_space", UNKNOWN_SPACE)
+    )
 
     ioi_seq_dir = Path(ioi_root) / args.seq_name
     if not ioi_seq_dir.is_dir():
@@ -380,6 +411,7 @@ def _ingest_json_mode(args):
         "frame_end": e,
         "image_paths": image_paths,
         "video_paths": {},
+        "source_pixel_space": source_pixel_space,
     }
 
 
@@ -418,6 +450,7 @@ def _ingest_videos_mode(args):
         "frame_end": e,
         "image_paths": {c: [] for c in args.cam_names},
         "video_paths": video_paths,
+        "source_pixel_space": args.source_pixel_space or UNKNOWN_SPACE,
     }
 
 
@@ -449,6 +482,7 @@ def _ingest_images_root_mode(args):
         "frame_end": e,
         "image_paths": image_paths,
         "video_paths": {},
+        "source_pixel_space": args.source_pixel_space or UNKNOWN_SPACE,
     }
 
 
@@ -464,6 +498,7 @@ def synthesize_ma_cap_npzs(
     fps: int = None,
     start: int = None,
     end: int = None,
+    source_pixel_space: str = None,
 ) -> Path:
     """Write the ma_cap NPZ contract directly, bypassing the CLI.
 
@@ -486,6 +521,7 @@ def synthesize_ma_cap_npzs(
     a.fps = fps
     a.start = start
     a.end = end
+    a.source_pixel_space = source_pixel_space
 
     mode = _validate_input_mode(a)
     if mode == "json":
@@ -520,6 +556,9 @@ def synthesize_ma_cap_npzs(
             video_path=ctx["video_paths"].get(cam_name, ""),
             frame_start=ctx["frame_start"],
             frame_end=ctx["frame_end"],
+            source_pixel_space=normalize_source_pixel_space(
+                ctx["source_pixel_space"]
+            ),
         )
     return gt_dir
 
@@ -541,6 +580,7 @@ def main(argv=None) -> None:
         fps=args.fps,
         start=args.start,
         end=args.end,
+        source_pixel_space=args.source_pixel_space,
     )
 
     elapsed = time.perf_counter() - t0

@@ -335,12 +335,20 @@ def parser():
     args.add_argument('--images_root_dir', type=str, default=None,
                       help='Standalone mode: directory of <cam_name>/*.{jpg,png} subdirectories.')
     args.add_argument('--calibration', type=str, default=None,
-                      help='Optional calibration file (yaml/xcp/json). Required when '
-                           '--undistort is set; otherwise accepted for CLI parity.')
+                      help='Calibration file (yaml/xcp/json). Required for standalone '
+                           'auto/undistort modes; chained mode reads ma_cap metadata.')
+    args.add_argument('--distortion-mode', choices=['auto', 'undistort', 'raw'],
+                      default=None,
+                      help='Pixel-space policy. auto (default) follows the explicit '
+                           'source-pixel-space declaration.')
+    args.add_argument(
+        '--source-pixel-space',
+        choices=['raw_distorted', 'pinhole_undistorted', 'unknown'],
+        default=None,
+        help='Delivered RGB pixel space for standalone videos/images. Chained mode reads ma_cap metadata.',
+    )
     args.add_argument('--undistort', action='store_true',
-                      help='Undistort frames via Vicon-radial-2 coefficients '
-                           '(from --calibration) before running the landmark '
-                           'network. Default off.')
+                      help='Deprecated alias for --distortion-mode undistort.')
     args.add_argument('--start', type=int, default=None,
                       help='First frame index to process (0-based, inclusive). '
                            'Default: 0 (process from the beginning).')
@@ -365,6 +373,12 @@ def parser():
                            'assets/verts_512.pkl; the inference runner injects '
                            'this from MAMMA_DOWNSAMPLED_VERTS_PKL.')
     parsed = args.parse_args()
+
+    if parsed.undistort and parsed.distortion_mode not in (None, 'undistort'):
+        args.error('--undistort conflicts with --distortion-mode')
+    parsed.distortion_mode = (
+        parsed.distortion_mode or ('undistort' if parsed.undistort else 'auto')
+    )
 
     # Post-parse mutex: exactly one input mode.
     input_flags = [
@@ -437,26 +451,31 @@ def _build_cam_sources(args, img_folder=None):
     ``args.images_root_dir`` must be set (the parser enforces this).
     Returns sources sorted by camera name (stable ordering).
 
-    When ``args.undistort`` is set, each source is configured to apply
-    Vicon-radial-2 undistortion on every frame read; the per-camera
-    :class:`Camera` is taken from ``args.calibration``.
+    Every source receives the same resolved distortion policy. Standalone
+    sources use ``args.calibration``; chained sources fall back to the camera
+    contract carried in each ma_cap NPZ.
     """
     sources = []
 
     calib_cams = None
-    if args.undistort:
-        if not args.calibration:
-            raise SystemExit("error: --undistort requires --calibration")
+    if args.calibration:
         from capture import load_calibration
         calib_cams = load_calibration(args.calibration).cameras
-        logger.info(f"undistort: loaded calibration with {len(calib_cams)} cameras")
+        logger.info(f"loaded calibration with {len(calib_cams)} cameras")
+    elif (args.videos_dir or args.images_root_dir) and args.distortion_mode in ('auto', 'undistort'):
+        raise SystemExit(
+            f"error: standalone distortion_mode={args.distortion_mode!r} requires --calibration"
+        )
 
     def _cam_for(name):
         if calib_cams is None:
             return None
         cam = calib_cams.get(name)
-        if cam is None:
-            logger.warning(f"--undistort: no calibration entry for camera {name!r}; skipping undistort for it")
+        if cam is None and args.distortion_mode in ('auto', 'undistort'):
+            raise ValueError(
+                f"distortion_mode={args.distortion_mode!r}: calibration has no "
+                f"entry for camera {name!r}"
+            )
         return cam
 
     start, end = args.start, args.end
@@ -469,7 +488,8 @@ def _build_cam_sources(args, img_folder=None):
             cam_data = cam_data_from_video(vp, start=start, end=end)
             cam = _cam_for(str(cam_data['cam_name']))
             sources.append(frame_source_from_cam_data(
-                cam_data, camera=cam, undistort=args.undistort and cam is not None,
+                cam_data, camera=cam, distortion_mode=args.distortion_mode,
+                source_pixel_space=args.source_pixel_space,
             ))
         return sources
 
@@ -481,7 +501,8 @@ def _build_cam_sources(args, img_folder=None):
             cam_data = cam_data_from_image_dir(cd, start=start, end=end)
             cam = _cam_for(str(cam_data['cam_name']))
             sources.append(frame_source_from_cam_data(
-                cam_data, camera=cam, undistort=args.undistort and cam is not None,
+                cam_data, camera=cam, distortion_mode=args.distortion_mode,
+                source_pixel_space=args.source_pixel_space,
             ))
         return sources
 
@@ -517,7 +538,7 @@ def _build_cam_sources(args, img_folder=None):
         # For ad-hoc users who want a different slice, use --videos_dir
         # or --images_root_dir directly with --start/--end.
         sources.append(frame_source_from_cam_data(
-            cam_data, camera=cam, undistort=args.undistort and cam is not None,
+            cam_data, camera=cam, distortion_mode=args.distortion_mode,
         ))
     return sources
 
@@ -560,6 +581,33 @@ def main(args, out_folder, masks_folder, img_folder=None):
     os.makedirs(out_folder, exist_ok=True)
 
     sources = _build_cam_sources(args, img_folder=img_folder)
+    from capture.geometry import (
+        geometry_record,
+        load_geometry_manifest,
+        validate_geometry_manifest,
+        write_geometry_manifest,
+    )
+    geometry_records = [
+        geometry_record(
+            source.camera,
+            args.distortion_mode,
+            name=source.cam_name,
+            source_pixel_space=source.source_pixel_space,
+        )
+        for source in sources
+    ]
+    if masks_folder:
+        validate_geometry_manifest(masks_folder, geometry_records, 'ma_2d')
+    existing_predictions = glob.glob(os.path.join(out_folder, '*.npz'))
+    existing_geometry = load_geometry_manifest(out_folder)
+    if existing_geometry is not None:
+        validate_geometry_manifest(out_folder, geometry_records, 'ma_2d cached output')
+    elif existing_predictions:
+        raise ValueError(
+            f"ma_2d: cached predictions in {out_folder} have no geometry.json; "
+            "use a new output tag or explicitly migrate the cache"
+        )
+    write_geometry_manifest(out_folder, 'ma_2d', geometry_records)
     logger.info(f"processing {len(sources)} cameras: {[s.cam_name for s in sources]}")
     for source in sources:
         process_data(source, detector, device, model, cfg, out_folder,

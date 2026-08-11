@@ -330,8 +330,18 @@ def _render_one_camera(
     colors_rgb: Sequence[Tuple[float, float, float]],
     opacity: float,
     undistort: bool = False,
+    distortion_mode: Optional[str] = None,
 ) -> CameraOverlayResult:
     import cv2
+    if distortion_mode is not None:
+        import os as _os, sys as _sys
+        _repo_root = _os.path.dirname(_os.path.dirname(_os.path.abspath(__file__)))
+        if _repo_root not in _sys.path:
+            _sys.path.insert(0, _repo_root)
+        from capture.geometry import resolve_distortion_mode  # noqa: E402
+        undistort, _ = resolve_distortion_mode(
+            distortion_mode, cam, cam.source_pixel_space
+        )
     _undistort_fn = None
     if undistort:
         # Lazy import + sys.path bump: this module may run in a worker pool
@@ -467,6 +477,7 @@ def render_overlay_videos(
     colors_rgb: Optional[Sequence[Tuple[float, float, float]]] = None,
     opacity: float = DEFAULT_OPACITY,
     undistort: bool = False,
+    distortion_mode: Optional[str] = None,
 ) -> List[CameraOverlayResult]:
     """Render an overlay mp4 per camera.
 
@@ -505,6 +516,7 @@ def render_overlay_videos(
                 fps=fps, resolution=resolution, max_frames=max_frames,
                 image_prefix=image_prefix, colors_rgb=colors_rgb, opacity=opacity,
                 undistort=undistort,
+                distortion_mode=distortion_mode,
             )
             for cam in cameras
         ]
@@ -514,6 +526,7 @@ def render_overlay_videos(
         fps=fps, resolution=resolution, max_frames=max_frames,
         image_prefix=image_prefix, colors_rgb=colors_rgb, opacity=opacity,
         undistort=undistort,
+        distortion_mode=distortion_mode,
         num_workers=num_workers,
     )
 
@@ -543,7 +556,10 @@ def _init_worker(motions: Sequence[PersonMotion], faces: np.ndarray) -> None:
 
 
 def _worker_render_camera(payload):
-    cam, out_dir, fps, resolution, max_frames, image_prefix, colors_rgb, opacity, undistort = payload
+    (
+        cam, out_dir, fps, resolution, max_frames, image_prefix,
+        colors_rgb, opacity, undistort, distortion_mode,
+    ) = payload
     motions = [
         PersonMotion(body_id=bid, vertices=v)
         for bid, v in zip(_WORKER_BODY_IDS or [], _WORKER_VERTICES or [])
@@ -553,6 +569,7 @@ def _worker_render_camera(payload):
         fps=fps, resolution=resolution, max_frames=max_frames,
         image_prefix=image_prefix, colors_rgb=colors_rgb, opacity=opacity,
         undistort=undistort,
+        distortion_mode=distortion_mode,
     )
 
 
@@ -570,9 +587,13 @@ def _render_in_parallel(
     opacity: float,
     num_workers: int,
     undistort: bool = False,
+    distortion_mode: Optional[str] = None,
 ) -> List[CameraOverlayResult]:
     payloads = [
-        (cam, str(out_dir), fps, resolution, max_frames, image_prefix, colors_rgb, opacity, undistort)
+        (
+            cam, str(out_dir), fps, resolution, max_frames, image_prefix,
+            colors_rgb, opacity, undistort, distortion_mode,
+        )
         for cam in cameras
     ]
     ordered: List[Optional[CameraOverlayResult]] = [None] * len(cameras)

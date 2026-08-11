@@ -15,6 +15,7 @@ Shape (excerpted from `quick.yaml`):
 global:
   out_dir: output
   conda_env: mamma
+  distortion_mode: auto
   start_frame: 60
   end_frame: 90
 ma_cap:
@@ -64,6 +65,11 @@ Common edits:
 - **Skip a step:** set `<step>.enabled: false`. Downstream steps either skip too (if they depended on the disabled one) or carry on (if they have another path to their inputs).
 - **Tune a step:** add `<step>.flags: ["--<flag> <value>"]`. The string is `shlex`-split, so `"--sam_version sam3"` becomes two argv tokens.
 - **Limit frames:** set `global.start_frame` / `global.end_frame`. Only `ma_cap` reads these; downstream steps pick up the range via the per-camera NPZ.
+- **Lens handling:** declare `source_pixel_space` in the capture JSON, then
+  keep `global.distortion_mode: auto`. It remaps declared `raw_distorted`
+  inputs and preserves declared `pinhole_undistorted` inputs. It does not infer
+  source pixels from lens coefficients. Use `raw` only for diagnostics; the
+  pinhole-only optimizer rejects raw or unknown manifests.
 - **Change conda env:** `global.conda_env: my_other_env`.
 
 ### Common per-step flags
@@ -76,6 +82,8 @@ Source: [`capture/run_ma_cap.py`](../capture/run_ma_cap.py).
 
 - `--start N` / `--end N` — frame-range slice (per-camera). Usually set via `global.start_frame`/`end_frame` instead.
 - `--fps N` — override the FPS recorded in `global.npz`. Defaults to the capture's `cam_fps`.
+- `--source-pixel-space raw_distorted|pinhole_undistorted|unknown` — override
+  the capture declaration. Useful for standalone diagnostics.
 - `-v` / `-vv` — INFO / DEBUG logging.
 
 #### `ma_masks`
@@ -86,9 +94,10 @@ Source: [`segmentation/run_ma_masks.py`](../segmentation/run_ma_masks.py).
 - `--expected_subjects N` — force the person count (auto-detected when unset).
 - `--init_frame N` — frame index used for person-detection initialisation.
 - `--interactive` — click-to-init through a GUI instead of YOLO auto-detect.
+- `--distortion-mode auto|undistort|raw` — pipeline pixel-space policy. `auto`
+  follows the source declaration; `undistort` is an explicit legacy override.
 - `--preview-fps F` — FPS for masked-output and collage diagnostics. The run
   builder derives it from `capture.cam_fps` when not explicitly overridden.
-- `--undistort` — apply Vicon-radial-2 undistortion before segmentation.
 
 #### `ma_2d`
 
@@ -96,7 +105,8 @@ Source: [`landmarks/run_ma_2d.py`](../landmarks/run_ma_2d.py).
 
 - `--no-save_cam_output` — skip per-camera viz frames + video (faster).
 - `--video_fps F` — FPS for generated viz videos (default 5).
-- `--undistort` — undistort frames before landmark inference.
+- `--distortion-mode auto|undistort|raw` — must match the mask stage; a
+  `geometry.json` manifest prevents incompatible cached masks from being reused.
 
 #### `ma_3d`
 
@@ -187,6 +197,7 @@ For the on-disk data layout, see [`docs/INSTALL.md`](INSTALL.md).
 | `cam_names`     | string list  | yes (run; presets omit) | Camera names. Forwarded as `--cam_names` to most steps. Presets omit this; the materializer derives it from `capture.cams` at submit time. |
 | `cam_fps`       | positive int | no (presets omit) | Capture frame rate. The materializer normalizes integral numeric `capture.cam_fps` values; `ma_vis` uses it unless its flags explicitly override `--fps`. |
 | `conda_env`     | string       | no       | Default conda env for the `conda` engine (default `mamma`). |
+| `distortion_mode` | enum       | no       | `auto` (default) follows the capture's explicit source pixel space; `undistort` explicitly remaps a known legacy raw source; `raw` preserves input pixels for diagnostics. |
 | `jobs_log_dir`  | path         | no       | Where per-(step, seq) `.log/.out/.err` files go. Falls back to `$MAMMA_DATA_DIR/logs` or `~/.mamma/logs`. |
 | `username`      | string       | no       | Inserted into log paths so multi-user setups don't collide. Falls back to `$USER`. |
 | `bind`          | string list  | no       | Extra `apptainer --bind` / `docker -v` entries. |
@@ -241,6 +252,11 @@ runner (for DONE-sentinel resolution + input lookup) and the GUI
 | `<seq>`           | Sequence name from the capture JSON's `sequences[...].name`/`ioi`.     | Per-sequence isolation. Sequence names embed the capture prefix today (e.g. `140725_Breakdance_Improv_1_…`), so collisions are unlikely, but the segment keeps the layout self-describing. |
 
 DONE sentinels live at `…/<seq>/DONE` (same path; one extra file).
+Frame-producing stages also write `geometry.json`. It records both source and
+output pixel spaces, camera intrinsics, distortion model, coefficients hash,
+and image size. A stage
+refuses to consume a present manifest that disagrees with its current geometry;
+legacy outputs without a manifest are accepted with a warning.
 Per-(step, seq) log files live in a different root under
 `global.jobs_log_dir`: `<jobs_log_dir>/<user>/<output_id>/<step>/<seq>.{log,out,err}`
 — no `<dataset_name>` segment there, since logs are short-lived.

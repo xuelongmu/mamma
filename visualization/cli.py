@@ -60,10 +60,17 @@ def _build_parser() -> argparse.ArgumentParser:
                    help="Camera names to include in standalone mode. Required "
                         "with --calibration so synthesis knows which cameras to write.")
     p.add_argument("--undistort", action="store_true",
-                   help="Apply Vicon-radial-2 undistortion to overlay-background "
-                        "frames before compositing the mesh. Reads coefficients "
-                        "from the per-camera NPZs loaded under --ma-cap-dir "
-                        "(or synthesized from --calibration). Default off.")
+                   help="Deprecated alias for --distortion-mode undistort.")
+    p.add_argument("--distortion-mode", choices=["auto", "undistort", "raw"],
+                   default=None,
+                   help="Pixel-space policy for overlay and Rerun backgrounds. "
+                        "Default auto follows the explicit source pixel space.")
+    p.add_argument(
+        "--source-pixel-space",
+        choices=["raw_distorted", "pinhole_undistorted", "unknown"],
+        default=None,
+        help="Delivered RGB pixel space in standalone mode; chained mode reads ma_cap metadata.",
+    )
     p.add_argument("--start-frame", "--start_frame", "--start", type=int,
                    default=None, dest="start_frame",
                    help="Standalone mode: first source-video frame to read "
@@ -172,9 +179,20 @@ def main(argv=None) -> None:
     args = _build_parser().parse_args(argv)
     _configure_logging(args.verbose)
 
+    if args.undistort and args.distortion_mode not in (None, "undistort"):
+        sys.stderr.write("error: --undistort conflicts with --distortion-mode\n")
+        sys.exit(2)
+    distortion_mode = args.distortion_mode or (
+        "undistort" if args.undistort else "auto"
+    )
+
     if not args.rerun_light and args.ma_2d_dir is None:
         sys.stderr.write("error: --ma-2d-dir is required unless --rerun-light is set\n")
         sys.exit(2)
+    if not args.rerun_light:
+        from pathlib import Path
+        from capture.geometry import require_pinhole_optimizer_geometry
+        require_pinhole_optimizer_geometry(Path(args.ma_2d_dir) / args.seq_name)
 
     if args.rerun_image_long_edge <= 0:
         sys.stderr.write("error: --rerun-image-long-edge must be positive\n")
@@ -214,6 +232,7 @@ def main(argv=None) -> None:
             images_root_dir=args.images_root_dir,
             frame_start=args.start_frame,
             frame_end=args.end_frame,
+            source_pixel_space=args.source_pixel_space or "unknown",
         )
         sys.stderr.write(
             f"loaded {len(cameras)} cameras from {args.calibration} "
@@ -240,7 +259,7 @@ def main(argv=None) -> None:
         overlay_image_prefix=args.overlay_image_prefix,
         max_preview_cams=args.max_preview_cams,
         faces_path=args.faces,
-        undistort=args.undistort,
+        distortion_mode=distortion_mode,
         rerun_images=args.rerun_images,
         rerun_image_long_edge=args.rerun_image_long_edge,
         rerun_image_jpeg_quality=args.rerun_image_jpeg_quality,

@@ -254,8 +254,10 @@ Key arguments:
 - `--out_folder` (default `out`) — outputs; with `--seq_name` set, results are
   scoped under `<out_folder>/<seq_name>/`.
 - `--cam_names IOI_01 IOI_02 …` — restrict to specific cameras.
-- `--calibration` + `--undistort` — apply Vicon-radial-2 undistortion before
-  inference (videos / images modes).
+- `--distortion-mode auto|undistort|raw` — choose the pixel-space policy
+  (`auto` is the default). `auto` follows the independent source-space
+  declaration and never guesses from coefficients. Standalone input supplies
+  `--source-pixel-space`; chained input reads it from ma_cap metadata.
 - `--start` / `--end` — frame range (videos / images modes only; NPZ mode uses
   the manifest's range).
 - `--save_cam_output` / `--no-save_cam_output` — per-camera viz frames + preview MP4.

@@ -197,6 +197,91 @@ camera 05 remained an isolated high-error view for the second body.
   directory after renderer changes, add middle/end frame checks for framing and
   synchronization, and only then render a full share video.
 
+## 2026-08-09 - Source pixel-space contract and distortion A/B
+
+- Evaluated whether lens metadata alone justifies undistorting delivered RGB
+  before detection. It does not: calibration coefficients describe the lens
+  model, while an exporter may already have rectified the video. The pipeline
+  now requires an independent `source_pixel_space` declaration and keeps the
+  pinhole-only optimizer behind a canonical-geometry guard.
+- MammaEval input: `230929_WhiteRabbit_CatchBall_50048_1`, frames 60-89,
+  cameras `IOI_01, IOI_05, IOI_09, IOI_13`. Both arms ran SAM2, MammaNet, and
+  the same optimizer settings. Preserving the declared pinhole footage beat a
+  forced second remap: PVE 15.015 vs 15.616 mm, MPJPE 15.433 vs 16.164 mm, and
+  observed epipolar median 1.823 vs 2.322 px. The forced remap increased outer
+  radial reprojection error from 4.729 to 7.080 px. This capture is therefore
+  declared `pinhole_undistorted`.
+- Depthkit inputs: recordings
+  `DELL_001_001_02_Xuelong_04_10_16_38_34` and
+  `DELL_001_001_06_Xuelong_04_10_18_05_51`, frames 300-329, using corrected
+  color-to-depth extrinsics. Nested camera sets were `cam_01`-`cam_04` (4),
+  plus `cam_06, cam_08` (6), plus `cam_09, cam_10` (8). The remap arm reran
+  masks and landmarks; both arms completed all 12 two-stage 3D fits.
+- Depthkit did not show a repeatable improvement. Recording two was nearly
+  unchanged: 8-view epipolar medians were 129.304 px preserved and 129.873 px
+  remapped. Recording one degraded at 6/8 views after several remapped-view
+  detections diverged; its 8-view triangulation median rose from 125.188 to
+  177.622 px. The very large residuals in both arms show that calibration/pose
+  convention and cross-view detection quality dominate any lens correction.
+  Depthkit has no external 3D ground truth here, so saved duplicate `gt_*`
+  arrays were not used as evaluation targets.
+- Disposable artifacts and complete JSON metrics are under
+  `tmp/issue3-expanded/` and `tmp/issue3-depthkit/`; they remain ignored and
+  are not uploaded. Validation passed 105 focused tests, 33 smoke checks with
+  zero failures, compile-all, CLI help checks, and the real-data runs above.
+- Decision: do not let the Depthkit adapter guess `raw_distorted`; leave its
+  source space unknown until a reprojection gate and exporter provenance
+  establish it. Next, fix the dominant Depthkit calibration/detection issue,
+  then repeat the same distortion A/B with external 3D ground truth or a
+  calibrated target before changing that declaration.
+
+## 2026-08-10 - Controlled raw-distortion and Panoptic validation
+
+- Added a controlled forward-distortion check using the same WhiteRabbit
+  frames 60-89 and cameras `IOI_01, IOI_05, IOI_09, IOI_13`. Canonical source
+  frames were forward-warped with matching Vicon radial-2 calibration, then
+  processed as (1) canonical baseline, (2) raw pixels falsely declared
+  pinhole, and (3) raw pixels correctly declared `raw_distorted`. All arms ran
+  SAM2, MammaNet, and the same two-stage optimizer.
+- The native-coefficient fixture displaced pixels by up to 41 px, but the
+  centered subject made aggregate fit error sensitive to optimizer variance.
+  A calibrated 3x stress fixture therefore repeated the same test with
+  byte-identical canonical frames, 38-74 px p90 displacement by camera, and a
+  49.8-55.3 dB corrected round trip. This was a stress test of the geometry
+  contract, not a claim about the released camera's physical coefficients.
+- On the 3x fixture, declaring raw pixels correctly reduced native epipolar
+  median from 3.982 to 2.748 px and outer-region median from 19.773 to 3.554
+  px. The corrected fit remained 1.531 mm PVE from the canonical-baseline fit,
+  versus 5.634 mm for raw-as-pinhole. Against external MammaEval ground truth,
+  root-aligned PVE improved from 18.421 to 17.201 mm and root-aligned MPJPE
+  from 18.043 to 17.127 mm; the canonical baseline was 17.169/17.104 mm.
+  Unaligned PVE favored the wrong arm because its global shift happened to
+  cancel part of the baseline offset, so it is not used as the deciding metric.
+- Independently tested CMU Panoptic `171204_pose1_sample`, frames 35-64, using
+  official OpenCV Brown coefficients, synchronized HD RGB, and released
+  COCO-19 3D joints. Calibration conversion was visually verified and inverted
+  raw projections recovered canonical projections within 0.0013 px. The valid
+  four-view set had 2.3-18.2 px p90 on-subject lens displacement.
+- On that Panoptic set, pre-detection correction reduced native epipolar median
+  from 2.842 to 2.666 px. Direct COCO body-15 MPJPE improved from 40.47 to
+  38.75 mm, root-aligned MPJPE from 41.43 to 38.54 mm, and centroid-aligned
+  MPJPE from 40.22 to 37.41 mm. Triangulation median changed from 1.329 to
+  1.347 px and PA-MPJPE from 30.32 to 32.04 mm, so the real-data improvement is
+  modest rather than universal.
+- A second, more off-axis Panoptic camera set increased on-subject p90
+  displacement to 9.9-18.2 px and cut outer-region epipolar median from 16.12
+  to 7.91 px. Its final fits are excluded from accuracy claims: single-subject
+  cross-view re-ID rejected two valid cameras and re-triangulated from only two
+  views, producing approximately 240 mm centroid-aligned errors in both arms.
+  This is a separate association failure, not evidence for or against lens
+  correction.
+- Conclusion: the core hypothesis is true for RGB that is actually raw
+  distorted. Canonicalizing before segmentation and landmark detection repairs
+  the pinhole geometry and can improve 3D accuracy. It must remain conditional
+  on explicit `source_pixel_space`; already-rectified WhiteRabbit footage must
+  not be remapped, and unknown Depthkit footage must fail safely rather than be
+  guessed. Complete datasets, generated outputs, overlays, evaluators, and JSON
+  metrics remain under ignored `tmp/core-hypothesis/`.
 ## 2026-08-08 - Depthkit Xuelong calibration and four-view reconstruction
 
 - Converted the 10-camera Xuelong `dkproject.json` using the validated Scatter

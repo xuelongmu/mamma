@@ -10,6 +10,8 @@ The ``ma_cap`` step writes one ``<cam_name>.npz`` per camera into
 * ``img_abs_path`` ``(F,)`` strings — absolute frame paths
 * ``img_rel_path`` ``(F,)`` strings — frame paths relative to a dataset root
 * (optional) ``fps`` (int-like)
+* (optional) ``distortion_model`` + ``distortion_coeffs`` — generic lens
+  calibration. Legacy files may contain only ``vicon_radial_2``.
 
 Vendored and cleaned from the upstream ``engine/systems_mv.py::
 MultiViewSystem._load_cameras``. Differences:
@@ -62,8 +64,9 @@ class Camera:
     frame_start: Optional[int] = None
     frame_end: Optional[int] = None
     fps: Optional[int] = None
-    distortion_model: str = "radtan"           # "radtan" (no-op default) or "vicon_radial_2"
+    distortion_model: str = "radtan"           # radtan, OpenCV Brown, or Vicon radial-2
     distortion_coeffs: tuple = (0.0, 0.0, 0.0, 0.0)
+    source_pixel_space: str = "unknown"
 
     def scaled(self, factor: float) -> "Camera":
         """Return a copy with intrinsics, width, and height scaled by ``factor``.
@@ -92,6 +95,7 @@ class Camera:
             fps=self.fps,
             distortion_model=self.distortion_model,
             distortion_coeffs=self.distortion_coeffs,
+            source_pixel_space=self.source_pixel_space,
         )
 
 
@@ -198,15 +202,27 @@ def _load_one(npz_path: str) -> Optional[Camera]:
             except (ValueError, TypeError):
                 fps = None
 
-        # Distortion: ma_cap writes vicon_radial_2 as a 5-float array,
-        # or as None (stored as a 0-d object array) when not applicable.
+        # Prefer the generic distortion contract. Fall back to the legacy
+        # Vicon-only key for old ma_cap outputs.
         distortion_model = "radtan"
         distortion_coeffs: tuple = (0.0, 0.0, 0.0, 0.0)
-        if "vicon_radial_2" in files:
+        if "distortion_model" in files and "distortion_coeffs" in files:
+            dm = _to_str(data["distortion_model"])
+            dc = np.asarray(data["distortion_coeffs"])
+            if dm and dc.ndim == 1 and dc.size >= 4:
+                distortion_model = dm
+                distortion_coeffs = tuple(float(v) for v in dc.tolist())
+        elif "vicon_radial_2" in files:
             v2 = np.asarray(data["vicon_radial_2"])
             if v2.shape == (5,):
                 distortion_model = "vicon_radial_2"
                 distortion_coeffs = tuple(float(v) for v in v2.tolist())
+
+        source_pixel_space = "unknown"
+        if "source_pixel_space" in files:
+            source_pixel_space = _to_str(data["source_pixel_space"])
+        elif "pixel_space" in files:
+            source_pixel_space = _to_str(data["pixel_space"])
 
         return Camera(
             name=name,
@@ -221,6 +237,7 @@ def _load_one(npz_path: str) -> Optional[Camera]:
             fps=fps,
             distortion_model=distortion_model,
             distortion_coeffs=distortion_coeffs,
+            source_pixel_space=source_pixel_space,
         )
     finally:
         data.close()
@@ -256,6 +273,7 @@ class MultiViewCameras:
         images_root_dir: Optional[str] = None,
         frame_start: Optional[int] = None,
         frame_end: Optional[int] = None,
+        source_pixel_space: str = "unknown",
     ) -> "MultiViewCameras":
         """Build :class:`Camera` objects in-memory from a calibration file.
 
@@ -326,6 +344,7 @@ class MultiViewCameras:
                 fps=None,
                 distortion_model=str(capt_cam.distortion_model),
                 distortion_coeffs=tuple(float(v) for v in capt_cam.distortion_coeffs),
+                source_pixel_space=source_pixel_space,
             ))
         return cls(tuple(cameras))
 

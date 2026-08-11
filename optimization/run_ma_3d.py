@@ -814,6 +814,15 @@ if __name__ == "__main__":
         print(f"Synthesized ma_cap scaffolding at: {npz_gt_path}")
 
     ldmks_pred_path = os.path.join(args.ma_2d_dir, seq_name)
+    # The optimizer projects with K[R|t] and therefore only accepts 2D
+    # observations in the canonical pinhole pixel space. Legacy outputs with
+    # no manifest are allowed with a warning; an explicit raw-distorted
+    # manifest is rejected before loading models or allocating GPU memory.
+    _repo_root = os.path.dirname(os.path.dirname(os.path.abspath(__file__)))
+    if _repo_root not in sys.path:
+        sys.path.insert(0, _repo_root)
+    from capture.geometry import require_pinhole_optimizer_geometry  # noqa: E402
+    require_pinhole_optimizer_geometry(ldmks_pred_path)
     print("Processing sequence: ", seq_name)
     img_pth = ""
     hand_joints_pred_pth = None
