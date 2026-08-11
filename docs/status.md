@@ -234,3 +234,51 @@ camera 05 remained an isolated high-error view for the second body.
   establish it. Next, fix the dominant Depthkit calibration/detection issue,
   then repeat the same distortion A/B with external 3D ground truth or a
   calibrated target before changing that declaration.
+
+## 2026-08-10 - Controlled raw-distortion and Panoptic validation
+
+- Added a controlled forward-distortion check using the same WhiteRabbit
+  frames 60-89 and cameras `IOI_01, IOI_05, IOI_09, IOI_13`. Canonical source
+  frames were forward-warped with matching Vicon radial-2 calibration, then
+  processed as (1) canonical baseline, (2) raw pixels falsely declared
+  pinhole, and (3) raw pixels correctly declared `raw_distorted`. All arms ran
+  SAM2, MammaNet, and the same two-stage optimizer.
+- The native-coefficient fixture displaced pixels by up to 41 px, but the
+  centered subject made aggregate fit error sensitive to optimizer variance.
+  A calibrated 3x stress fixture therefore repeated the same test with
+  byte-identical canonical frames, 38-74 px p90 displacement by camera, and a
+  49.8-55.3 dB corrected round trip. This was a stress test of the geometry
+  contract, not a claim about the released camera's physical coefficients.
+- On the 3x fixture, declaring raw pixels correctly reduced native epipolar
+  median from 3.982 to 2.748 px and outer-region median from 19.773 to 3.554
+  px. The corrected fit remained 1.531 mm PVE from the canonical-baseline fit,
+  versus 5.634 mm for raw-as-pinhole. Against external MammaEval ground truth,
+  root-aligned PVE improved from 18.421 to 17.201 mm and root-aligned MPJPE
+  from 18.043 to 17.127 mm; the canonical baseline was 17.169/17.104 mm.
+  Unaligned PVE favored the wrong arm because its global shift happened to
+  cancel part of the baseline offset, so it is not used as the deciding metric.
+- Independently tested CMU Panoptic `171204_pose1_sample`, frames 35-64, using
+  official OpenCV Brown coefficients, synchronized HD RGB, and released
+  COCO-19 3D joints. Calibration conversion was visually verified and inverted
+  raw projections recovered canonical projections within 0.0013 px. The valid
+  four-view set had 2.3-18.2 px p90 on-subject lens displacement.
+- On that Panoptic set, pre-detection correction reduced native epipolar median
+  from 2.842 to 2.666 px. Direct COCO body-15 MPJPE improved from 40.47 to
+  38.75 mm, root-aligned MPJPE from 41.43 to 38.54 mm, and centroid-aligned
+  MPJPE from 40.22 to 37.41 mm. Triangulation median changed from 1.329 to
+  1.347 px and PA-MPJPE from 30.32 to 32.04 mm, so the real-data improvement is
+  modest rather than universal.
+- A second, more off-axis Panoptic camera set increased on-subject p90
+  displacement to 9.9-18.2 px and cut outer-region epipolar median from 16.12
+  to 7.91 px. Its final fits are excluded from accuracy claims: single-subject
+  cross-view re-ID rejected two valid cameras and re-triangulated from only two
+  views, producing approximately 240 mm centroid-aligned errors in both arms.
+  This is a separate association failure, not evidence for or against lens
+  correction.
+- Conclusion: the core hypothesis is true for RGB that is actually raw
+  distorted. Canonicalizing before segmentation and landmark detection repairs
+  the pinhole geometry and can improve 3D accuracy. It must remain conditional
+  on explicit `source_pixel_space`; already-rectified WhiteRabbit footage must
+  not be remapped, and unknown Depthkit footage must fail safely rather than be
+  guessed. Complete datasets, generated outputs, overlays, evaluators, and JSON
+  metrics remain under ignored `tmp/core-hypothesis/`.
